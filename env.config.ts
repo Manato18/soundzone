@@ -10,7 +10,7 @@ export const ENV_CONFIG = {
   SUPABASE_URL: SUPABASE_URL || '',
   SUPABASE_ANON_KEY: SUPABASE_ANON_KEY || '',
   
-  // Google Maps API Key (将来使用予定)
+  // Google Maps API Key (Android専用 - iOSはApple Mapsを使用)
   GOOGLE_MAPS_API_KEY: process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || '',
 };
 

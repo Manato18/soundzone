@@ -13,10 +13,7 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.anonymous.soundzone",
-      "config": {
-        "googleMapsApiKey": "AIzaSyDgC7jVfQc-5qL6Dl-9G0LdrP9UnHB3pp4"
-      }
+      "bundleIdentifier": "com.anonymous.soundzone"
     },
     "android": {
       "adaptiveIcon": {
