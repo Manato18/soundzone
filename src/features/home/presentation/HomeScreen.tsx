@@ -183,7 +183,7 @@ export default function HomeScreen() {
         userLocationCalloutEnabled={true}
         rotateEnabled={true}
       >
-        {/* 現在位置にカスタムマーカーを表示（方角も含む） */}
+        {/* 現在位置にシンプルなマーカーを表示 */}
         {location && (
           <Marker
             coordinate={{
@@ -191,21 +191,13 @@ export default function HomeScreen() {
               longitude: location.coords.longitude,
             }}
             title="現在位置"
-            description={`精度: ${location.coords.accuracy ? Math.round(location.coords.accuracy) : '不明'}m${
-              location.coords.heading !== null 
-                ? ` | 方角: ${Math.round(location.coords.heading)}°` 
-                : ''
-            }`}
-            rotation={location.coords.heading || 0}
+            description={`精度: ${location.coords.accuracy ? Math.round(location.coords.accuracy) : '不明'}m`}
+            anchor={{ x: 0.5, y: 0.5 }}
           >
             <View style={styles.markerContainer}>
-              <View style={[
-                styles.directionIndicator,
-                { 
-                  transform: [{ rotate: `${location.coords.heading || 0}deg` }] 
-                }
-              ]}>
-                <Ionicons name="arrow-up" size={20} color="#fff" />
+              {/* メインの青いドット */}
+              <View style={styles.locationDot}>
+                <View style={styles.innerDot} />
               </View>
             </View>
           </Marker>
@@ -263,16 +255,18 @@ const styles = StyleSheet.create({
   markerContainer: {
     alignItems: 'center',
     justifyContent: 'center',
+    width: 26,
+    height: 26,
   },
-  directionIndicator: {
+  locationDot: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
     backgroundColor: '#007AFF',
-    borderRadius: 20,
-    width: 40,
-    height: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
     borderWidth: 3,
     borderColor: '#fff',
+    justifyContent: 'center',
+    alignItems: 'center',
     shadowOffset: {
       width: 0,
       height: 2,
@@ -280,6 +274,13 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
     elevation: 5,
+    zIndex: 2,
+  },
+  innerDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#fff',
   },
   errorContainer: {
     position: 'absolute',
