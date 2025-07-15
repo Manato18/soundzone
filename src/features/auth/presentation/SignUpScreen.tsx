@@ -58,7 +58,7 @@ export default function SignUpScreen({ navigation }: SignUpScreenProps) {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>新規登録</Text>
-      <Text style={styles.subtitle}>SoundMapに参加しよう</Text>
+      <Text style={styles.subtitle}>SoundZoneに参加しよう</Text>
 
       <View style={styles.form}>
         <TextInput

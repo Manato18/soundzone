@@ -1,8 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import React, { useEffect, useRef, useState } from 'react';
-import { Alert, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
+import AudioPlayerModal from '../../../../components/AudioPlayerModal';
 
 interface LocationData {
   latitude: number;
@@ -20,18 +21,80 @@ interface UserLocationData {
   };
 }
 
+interface AudioData {
+  id: string;
+  title: string;
+  userName: string;
+  userImage: string;
+  audioUrl: string;
+  description: string;
+  latitude: number;
+  longitude: number;
+}
+
+// 京都付近の音声ピンデータ
+const AUDIO_PINS: AudioData[] = [
+  {
+    id: '1',
+    title: '1個目のピン',
+    userName: 'Andrew Daniels',
+    userImage: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&h=150&fit=crop&crop=face',
+    audioUrl: require('../../../../assets/sounds/pin1.wav'),
+    description: 'samplesamplesamplesamplesamplesamplesamplesamplesamplesamplesamplesamplesamplesamplesamplesamplesamplesamplesample',
+    latitude: 35.0116,
+    longitude: 135.7681, // 京都市中心部（京都駅付近）
+  },
+  {
+    id: '2',
+    title: '2個目のピン',
+    userName: 'Sarah Johnson',
+    userImage: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=150&h=150&fit=crop&crop=face',
+    audioUrl: require('../../../../assets/sounds/pin2.wav'),
+    description: 'samplesamplesamplesamplesamplesamplesamplesamplesamplesamplesamplesamplesamplesamplesamplesamplesamplesamplesample',
+    latitude: 35.0395,
+    longitude: 135.7290, // 清水寺付近
+  },
+  {
+    id: '3',
+    title: '3個目のピン',
+    userName: 'Mike Chen',
+    userImage: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&h=150&fit=crop&crop=face',
+    audioUrl: require('../../../../assets/sounds/pin3.wav'),
+    description: 'samplesamplesamplesamplesamplesamplesamplesamplesamplesamplesamplesamplesamplesamplesamplesamplesamplesamplesample',
+    latitude: 35.0394,
+    longitude: 135.7290, // 伏見稲荷付近
+  },
+];
+
 export default function HomeScreen() {
   const [location, setLocation] = useState<UserLocationData | null>(null);
   const [region, setRegion] = useState<LocationData>({
-    latitude: 35.6762,
-    longitude: 139.6503,
-    latitudeDelta: 0.01,
-    longitudeDelta: 0.01,
+    latitude: 35.0116, // 京都を初期表示
+    longitude: 135.7681,
+    latitudeDelta: 0.05,
+    longitudeDelta: 0.05,
   });
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isLocationEnabled, setIsLocationEnabled] = useState(false);
+  const [modalVisible, setModalVisible] = useState(false);
+  const [selectedAudio, setSelectedAudio] = useState<AudioData | null>(null);
   const mapRef = useRef<MapView>(null);
   const locationSubscription = useRef<Location.LocationSubscription | null>(null);
+
+  // ピンタップ時のハンドラー
+  const handlePinPress = (audioData: AudioData) => {
+    console.log('handlePinPress called with:', audioData.title);
+    setSelectedAudio(audioData);
+    setModalVisible(true);
+    console.log('Modal should be visible now');
+  };
+
+  // モーダルを閉じる
+  const handleCloseModal = () => {
+    console.log('handleCloseModal called');
+    setModalVisible(false);
+    setSelectedAudio(null);
+  };
 
   // 位置情報の許可を取得
   const requestLocationPermission = async () => {
@@ -202,6 +265,29 @@ export default function HomeScreen() {
             </View>
           </Marker>
         )}
+
+        {/* 音声ピンマーカー */}
+        {AUDIO_PINS.map((pin) => (
+          <Marker
+            key={pin.id}
+            coordinate={{
+              latitude: pin.latitude,
+              longitude: pin.longitude,
+            }}
+            title={pin.title}
+            description={`${pin.userName}の音声`}
+            onPress={() => {
+              console.log('Pin pressed:', pin.title);
+              handlePinPress(pin);
+            }}
+          >
+            <Image
+              source={require('../../../../assets/images/pin_icon.png')}
+              style={styles.pinIcon}
+              resizeMode="contain"
+            />
+          </Marker>
+        ))}
       </MapView>
 
       {/* 現在位置ボタン */}
@@ -223,6 +309,13 @@ export default function HomeScreen() {
           <Text style={styles.errorText}>{errorMsg}</Text>
         </View>
       )}
+
+      {/* 音声再生モーダル */}
+      <AudioPlayerModal
+        visible={modalVisible}
+        onClose={handleCloseModal}
+        audioData={selectedAudio}
+      />
     </View>
   );
 }
@@ -281,6 +374,10 @@ const styles = StyleSheet.create({
     height: 8,
     borderRadius: 4,
     backgroundColor: '#fff',
+  },
+  pinIcon: {
+    width: 40,
+    height: 40,
   },
   errorContainer: {
     position: 'absolute',
