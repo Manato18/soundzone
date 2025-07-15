@@ -1,13 +1,13 @@
-import React from 'react';
-import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
+import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import React from 'react';
 
 // SoundZoneアプリの各画面コンポーネント
+import AccountScreen from '../features/account/presentation/AccountScreen';
 import HomeScreen from '../features/home/presentation/HomeScreen';
-import RecordingScreen from '../features/recording/presentation/RecordingScreen';
 import LayersScreen from '../features/layers/presentation/LayersScreen';
 import MyPinScreen from '../features/mypin/presentation/MyPinScreen';
-import AccountScreen from '../features/account/presentation/AccountScreen';
+import RecordingScreen from '../features/recording/presentation/RecordingScreen';
 
 const Tab = createBottomTabNavigator();
 
@@ -28,6 +28,7 @@ const getTabIcon = (routeName: string, focused: boolean): keyof typeof Ionicons.
 export default function AppNavigator() {
   return (
     <Tab.Navigator
+      initialRouteName="Home"
       screenOptions={({ route }) => ({
         tabBarIcon: ({ focused, color, size }) => {
           const iconName = getTabIcon(route.name, focused);

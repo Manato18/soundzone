@@ -39,8 +39,8 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>SoundMap</Text>
-      <Text style={styles.subtitle}>音の地図SNS</Text>
+      <Text style={styles.title}>SoundZone</Text>
+      <Text style={styles.subtitle}></Text>
 
       <View style={styles.form}>
         <TextInput

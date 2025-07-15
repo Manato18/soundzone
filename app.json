@@ -13,7 +13,10 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.anonymous.soundzone"
+      "bundleIdentifier": "com.anonymous.soundzone",
+      "infoPlist": {
+        "UIBackgroundModes": ["audio"]
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -21,7 +24,12 @@
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.anonymous.soundzone"
+      "package": "com.anonymous.soundzone",
+      "config": {
+        "googleMaps": {
+          "apiKey": "AIzaSyDgC7jVfQc-5qL6Dl-9G0LdrP9UnHB3pp4"
+        }
+      }
     },
     "web": {
       "bundler": "metro",
@@ -38,7 +46,8 @@
           "resizeMode": "contain",
           "backgroundColor": "#ffffff"
         }
+              ],
+        "expo-asset"
       ]
-    ]
   }
 }
