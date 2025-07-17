@@ -7,6 +7,7 @@ export interface AudioPin {
   description: string;
   latitude: number;
   longitude: number;
+  layerIds: string[]; // 複数のレイヤーに属することが可能
 }
 
 export interface AudioPlaybackState {
