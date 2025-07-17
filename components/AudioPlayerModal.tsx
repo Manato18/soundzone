@@ -1,11 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
   Dimensions,
   Image,
   Modal,
   PanResponder,
+  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -40,62 +41,120 @@ interface AudioPlayerModalProps {
 
 const { height: screenHeight } = Dimensions.get('window');
 
+// モーダルの3つの状態
+const MODAL_STATES = {
+  CLOSED: screenHeight,                    // 完全に下に隠れた状態
+  COLLAPSED: screenHeight * 0.5,          // 下半分表示
+  EXPANDED: 100,                          // ほぼ全画面（ステータスバー分を残す）
+};
+
 export default function AudioPlayerModal({ visible, onClose, audioData }: AudioPlayerModalProps) {
   const [isPlayerReady, setIsPlayerReady] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [currentState, setCurrentState] = useState('COLLAPSED');
   
   // useRefでslideAnimを管理
-  const slideAnim = useRef(new Animated.Value(screenHeight)).current;
+  const slideAnim = useRef(new Animated.Value(MODAL_STATES.CLOSED)).current;
+  // currentStateをrefで管理して、panResponder内で最新の値を参照できるようにする
+  const currentStateRef = useRef(currentState);
   
   // react-native-track-playerのフックを使用
   const playbackState = usePlaybackState();
   const progress = useProgress();
 
-  // パンレスポンダーでスワイプダウンを検出（ハンドルバーのみに適用）
-  const panResponder = useRef(
-    PanResponder.create({
+  // 指定の状態にアニメーション
+  const animateToState = useCallback((state: keyof typeof MODAL_STATES) => {
+    setCurrentState(state);
+    Animated.spring(slideAnim, {
+      toValue: MODAL_STATES[state],
+      tension: 100,
+      friction: 8,
+      useNativeDriver: true,
+    }).start(() => {
+      if (state === 'CLOSED') {
+        onClose();
+      }
+    });
+  }, [slideAnim, onClose]);
+
+  // パンレスポンダーで3段階のスワイプを制御
+  const panResponder = useMemo(
+    () => PanResponder.create({
+      onStartShouldSetPanResponder: (evt, gestureState) => {
+        console.log('onStartShouldSetPanResponder: true');
+        return true;
+      },
       onMoveShouldSetPanResponder: (evt, gestureState) => {
-        return Math.abs(gestureState.dy) > Math.abs(gestureState.dx) && Math.abs(gestureState.dy) > 10;
+        // 縦方向のスワイプで、少しでも移動があれば反応
+        const isVerticalGesture = Math.abs(gestureState.dy) > Math.abs(gestureState.dx);
+        const hasMovement = Math.abs(gestureState.dy) > 5;
+        const shouldRespond = isVerticalGesture && hasMovement;
+        console.log('onMoveShouldSetPanResponder:', shouldRespond, 'dy:', gestureState.dy, 'dx:', gestureState.dx);
+        return shouldRespond;
+      },
+      onPanResponderTerminationRequest: () => false, // 他のコンポーネントに制御を譲らない
+      onPanResponderGrant: () => {
+        console.log('onPanResponderGrant - current state:', currentStateRef.current);
+        // タッチ開始時のベース位置を設定
+        slideAnim.setOffset(MODAL_STATES[currentStateRef.current as keyof typeof MODAL_STATES]);
+        slideAnim.setValue(0);
       },
       onPanResponderMove: (evt, gestureState) => {
-        if (gestureState.dy > 0) {
-          slideAnim.setValue(gestureState.dy);
-        }
+        // 上下両方向のスワイプを許可
+        slideAnim.setValue(gestureState.dy);
       },
       onPanResponderRelease: (evt, gestureState) => {
-        if (gestureState.dy > 100) {
-          closeModal();
-        } else {
-          // 元の位置に戻す
-          Animated.spring(slideAnim, {
-            toValue: 0,
-            useNativeDriver: true,
-          }).start();
+        console.log('onPanResponderRelease - dy:', gestureState.dy, 'velocity:', gestureState.vy, 'current state:', currentStateRef.current);
+        slideAnim.flattenOffset();
+        
+        const velocity = gestureState.vy;
+        
+        // 現在の状態と移動量・速度に基づいて次の状態を決定
+        if (currentStateRef.current === 'COLLAPSED') {
+          if (gestureState.dy < -100 || velocity < -0.5) {
+            // 上にスワイプ → 全画面表示
+            console.log('Transitioning to EXPANDED');
+            animateToState('EXPANDED');
+          } else if (gestureState.dy > 150 || velocity > 0.5) {
+            // 下にスワイプ → 閉じる
+            console.log('Transitioning to CLOSED');
+            animateToState('CLOSED');
+          } else {
+            // 元の位置に戻す
+            console.log('Returning to COLLAPSED');
+            animateToState('COLLAPSED');
+          }
+        } else if (currentStateRef.current === 'EXPANDED') {
+          if (gestureState.dy > 100 || velocity > 0.3) {
+            // 下にスワイプ → 縮小表示
+            console.log('Transitioning to COLLAPSED');
+            animateToState('COLLAPSED');
+          } else {
+            // 元の位置に戻す
+            console.log('Returning to EXPANDED');
+            animateToState('EXPANDED');
+          }
         }
       },
-    })
-  ).current;
+    }),
+    [slideAnim, animateToState]
+  );
 
-  // モーダルオープンアニメーション
-  const openModal = () => {
+  // モーダルオープンアニメーション（下半分から開始）
+  const openModal = useCallback(() => {
+    setCurrentState('COLLAPSED');
     Animated.spring(slideAnim, {
-      toValue: 0,
+      toValue: MODAL_STATES.COLLAPSED,
       tension: 80,
       friction: 8,
       useNativeDriver: true,
     }).start();
-  };
+  }, [slideAnim]);
 
   // モーダルクローズアニメーション
-  const closeModal = () => {
-    Animated.timing(slideAnim, {
-      toValue: screenHeight,
-      duration: 300,
-      useNativeDriver: true,
-    }).start(() => {
-      onClose();
-    });
-  };
+  const closeModal = useCallback(() => {
+    animateToState('CLOSED');
+  }, [animateToState]);
 
   // バックドロップタップでモーダルを閉じる
   const handleBackdropPress = () => {
@@ -109,7 +168,7 @@ export default function AudioPlayerModal({ visible, onClose, audioData }: AudioP
                      isLoading;
 
   // TrackPlayerの初期化と音声読み込み
-  const setupAndLoadAudio = async () => {
+  const setupAndLoadAudio = useCallback(async () => {
     if (!audioData) return;
 
     try {
@@ -142,7 +201,7 @@ export default function AudioPlayerModal({ visible, onClose, audioData }: AudioP
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [audioData]);
 
   useEffect(() => {
     console.log('AudioPlayerModal visible changed:', visible);
@@ -151,7 +210,12 @@ export default function AudioPlayerModal({ visible, onClose, audioData }: AudioP
       openModal();
       setupAndLoadAudio();
     }
-  }, [visible, audioData]);
+  }, [visible, audioData, openModal, setupAndLoadAudio]);
+
+  // currentStateRefを同期
+  useEffect(() => {
+    currentStateRef.current = currentState;
+  }, [currentState]);
 
   // 音声再生/停止
   const togglePlayback = async () => {
@@ -207,19 +271,19 @@ export default function AudioPlayerModal({ visible, onClose, audioData }: AudioP
             styles.modalContainer,
             {
               transform: [{ translateY: slideAnim }],
+              height: screenHeight, // 画面全体の高さを確保
             },
           ]}
         >
-          {/* ハンドルバー */}
+          {/* ハンドルバー（ドラッグ可能エリア） */}
           <View style={styles.handleContainer} {...panResponder.panHandlers}>
             <View style={styles.handle} />
           </View>
 
-          {/* メインコンテンツ */}
-          <View style={styles.content}>
+          {/* 固定プレイヤー情報エリア */}
+          <View style={styles.fixedPlayerSection} {...panResponder.panHandlers}>
             {/* メイン横並びセクション */}
             <View style={styles.mainSection}>
-              {/* 左側：アイコンと名前 */}
               <View style={styles.leftSection}>
                 <Image source={{ uri: audioData.userImage }} style={styles.userIcon} />
                 <Text style={styles.userName}>{audioData.userName}</Text>
@@ -310,12 +374,23 @@ export default function AudioPlayerModal({ visible, onClose, audioData }: AudioP
                 </View>
               </View>
             </View>
-
-            {/* 説明テキスト（全体の下） */}
-            <View style={styles.descriptionContainer}>
-              <Text style={styles.description}>{audioData.description}</Text>
-            </View>
           </View>
+
+          {/* 説明テキスト（スクロール可能エリア） */}
+          <View style={styles.descriptionHeader}>
+            <View style={styles.divider} />
+          </View>
+          <ScrollView 
+            style={styles.descriptionScrollContainer}
+            contentContainerStyle={styles.descriptionScrollContent}
+            showsVerticalScrollIndicator={true}
+            bounces={true}
+            scrollEnabled={true}
+            nestedScrollEnabled={true}
+            scrollEventThrottle={16}
+          >
+            <Text style={styles.description}>{audioData.description}</Text>
+          </ScrollView>
         </Animated.View>
       </View>
     </Modal>
@@ -339,29 +414,40 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    minHeight: 400,
-    maxHeight: screenHeight * 0.8,
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
   },
   handleContainer: {
     paddingVertical: 15,
     alignItems: 'center',
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    // タッチエリアを大きくするため、最小高さを設定
+    minHeight: 30,
+    justifyContent: 'center',
   },
   handle: {
-    width: 50,
+    width: 60,
     height: 5,
-    backgroundColor: '#C0C0C0',
+    backgroundColor: '#999',
     borderRadius: 3,
-  },
-  content: {
-    padding: 20,
+    // ハンドルを少し目立たせる
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 1,
+    elevation: 1,
   },
   mainSection: {
     flexDirection: 'row',
-    marginBottom: 16,
   },
   leftSection: {
     alignItems: 'center',
-    width: 60, // アイコン幅(60px) + 余白(12px)
+    width: 60,
     marginRight: 15,
   },
   rightSection: {
@@ -468,8 +554,31 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '500',
   },
-  descriptionContainer: {
-    marginTop: 4,
+  descriptionHeader: {
+    paddingTop: 16,
+    paddingBottom: 8,
+    alignItems: 'center',
+  },
+  divider: {
+    width: 40,
+    height: 2,
+    backgroundColor: '#f0f0f0',
+    borderRadius: 1,
+  },
+  descriptionScrollContainer: {
+    flex: 1,
+    backgroundColor: '#f8f8f8',
+  },
+  descriptionScrollContent: {
+    paddingHorizontal: 20,
+    paddingBottom: 20,
+    paddingTop: 16,
+  },
+  fixedPlayerSection: {
+    backgroundColor: '#fff',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
   },
   description: {
     fontSize: 14,
