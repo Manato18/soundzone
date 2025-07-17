@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
   Dimensions,
@@ -57,25 +57,58 @@ export default function AudioPlayerModal({ visible, onClose, audioData }: AudioP
   const slideAnim = useRef(new Animated.Value(MODAL_STATES.CLOSED)).current;
   // currentStateをrefで管理して、panResponder内で最新の値を参照できるようにする
   const currentStateRef = useRef(currentState);
+  // マウント状態を追跡してメモリリークを防ぐ
+  const isMountedRef = useRef(false);
   
   // react-native-track-playerのフックを使用
   const playbackState = usePlaybackState();
   const progress = useProgress();
 
+  // マウント・アンマウント管理
+  useLayoutEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  // 安全な状態更新関数
+  const safeSetState = useCallback((setter: () => void) => {
+    if (isMountedRef.current) {
+      // 状態更新を次のフレームに遅延
+      requestAnimationFrame(() => {
+        if (isMountedRef.current) {
+          setter();
+        }
+      });
+    }
+  }, []);
+
   // 指定の状態にアニメーション
   const animateToState = useCallback((state: keyof typeof MODAL_STATES) => {
-    setCurrentState(state);
+    if (!isMountedRef.current) return;
+    
+    // 状態更新を安全に実行
+    safeSetState(() => {
+      setCurrentState(state);
+    });
+    
     Animated.spring(slideAnim, {
       toValue: MODAL_STATES[state],
       tension: 100,
       friction: 8,
       useNativeDriver: true,
-    }).start(() => {
-      if (state === 'CLOSED') {
-        onClose();
+    }).start((finished) => {
+      if (finished && state === 'CLOSED' && isMountedRef.current) {
+        // アニメーション完了後のコールバックも安全に実行
+        requestAnimationFrame(() => {
+          if (isMountedRef.current) {
+            onClose();
+          }
+        });
       }
     });
-  }, [slideAnim, onClose]);
+  }, [slideAnim, onClose, safeSetState]);
 
   // パンレスポンダーで3段階のスワイプを制御
   const panResponder = useMemo(
@@ -109,30 +142,39 @@ export default function AudioPlayerModal({ visible, onClose, audioData }: AudioP
         
         const velocity = gestureState.vy;
         
+        // panResponder内での状態更新を安全に実行
+        const performTransition = (targetState: keyof typeof MODAL_STATES) => {
+          setTimeout(() => {
+            if (isMountedRef.current) {
+              animateToState(targetState);
+            }
+          }, 0);
+        };
+        
         // 現在の状態と移動量・速度に基づいて次の状態を決定
         if (currentStateRef.current === 'COLLAPSED') {
           if (gestureState.dy < -100 || velocity < -0.5) {
             // 上にスワイプ → 全画面表示
             console.log('Transitioning to EXPANDED');
-            animateToState('EXPANDED');
+            performTransition('EXPANDED');
           } else if (gestureState.dy > 150 || velocity > 0.5) {
             // 下にスワイプ → 閉じる
             console.log('Transitioning to CLOSED');
-            animateToState('CLOSED');
+            performTransition('CLOSED');
           } else {
             // 元の位置に戻す
             console.log('Returning to COLLAPSED');
-            animateToState('COLLAPSED');
+            performTransition('COLLAPSED');
           }
         } else if (currentStateRef.current === 'EXPANDED') {
           if (gestureState.dy > 100 || velocity > 0.3) {
             // 下にスワイプ → 縮小表示
             console.log('Transitioning to COLLAPSED');
-            animateToState('COLLAPSED');
+            performTransition('COLLAPSED');
           } else {
             // 元の位置に戻す
             console.log('Returning to EXPANDED');
-            animateToState('EXPANDED');
+            performTransition('EXPANDED');
           }
         }
       },
@@ -142,14 +184,19 @@ export default function AudioPlayerModal({ visible, onClose, audioData }: AudioP
 
   // モーダルオープンアニメーション（下半分から開始）
   const openModal = useCallback(() => {
-    setCurrentState('COLLAPSED');
+    if (!isMountedRef.current) return;
+    
+    safeSetState(() => {
+      setCurrentState('COLLAPSED');
+    });
+    
     Animated.spring(slideAnim, {
       toValue: MODAL_STATES.COLLAPSED,
       tension: 80,
       friction: 8,
       useNativeDriver: true,
     }).start();
-  }, [slideAnim]);
+  }, [slideAnim, safeSetState]);
 
   // モーダルクローズアニメーション
   const closeModal = useCallback(() => {
@@ -169,14 +216,17 @@ export default function AudioPlayerModal({ visible, onClose, audioData }: AudioP
 
   // TrackPlayerの初期化と音声読み込み
   const setupAndLoadAudio = useCallback(async () => {
-    if (!audioData) return;
+    if (!audioData || !isMountedRef.current) return;
 
     try {
-      setIsLoading(true);
+      // 安全な状態更新
+      safeSetState(() => {
+        setIsLoading(true);
+      });
       
       // TrackPlayerを初期化
       const isReady = await trackPlayerSetup();
-      if (!isReady) {
+      if (!isReady || !isMountedRef.current) {
         console.error('TrackPlayer setup failed');
         return;
       }
@@ -194,26 +244,42 @@ export default function AudioPlayerModal({ visible, onClose, audioData }: AudioP
       };
 
       await TrackPlayer.add(track);
-      setIsPlayerReady(true);
+      
+      // 安全な状態更新
+      if (isMountedRef.current) {
+        safeSetState(() => {
+          setIsPlayerReady(true);
+        });
+      }
 
     } catch (error) {
       console.error('音声設定エラー:', error);
     } finally {
-      setIsLoading(false);
+      if (isMountedRef.current) {
+        safeSetState(() => {
+          setIsLoading(false);
+        });
+      }
     }
-  }, [audioData]);
+  }, [audioData, safeSetState]);
 
+  // visibleとaudioDataの変化を監視（安全な状態更新）
   useEffect(() => {
     console.log('AudioPlayerModal visible changed:', visible);
-    if (visible && audioData) {
+    if (visible && audioData && isMountedRef.current) {
       console.log('Opening modal with audioData:', audioData?.title);
-      openModal();
-      setupAndLoadAudio();
+      // モーダル開始とオーディオ設定を順次実行
+      setTimeout(() => {
+        if (isMountedRef.current) {
+          openModal();
+          setupAndLoadAudio();
+        }
+      }, 0);
     }
   }, [visible, audioData, openModal, setupAndLoadAudio]);
 
   // currentStateRefを同期
-  useEffect(() => {
+  useLayoutEffect(() => {
     currentStateRef.current = currentState;
   }, [currentState]);
 
