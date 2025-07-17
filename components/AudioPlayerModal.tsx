@@ -1,24 +1,25 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useRef, useState } from 'react';
 import {
-    Animated,
-    Dimensions,
-    Image,
-    Modal,
-    PanResponder,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  Animated,
+  Dimensions,
+  Image,
+  Modal,
+  PanResponder,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import TrackPlayer, {
-    State,
-    Track,
-    usePlaybackState,
-    useProgress
+  State,
+  Track,
+  usePlaybackState,
+  useProgress
 } from 'react-native-track-player';
 import { getLayersByIds } from '../src/features/layers/domain/utils/layerUtils';
 import { trackPlayerSetup } from '../src/shared/services/trackPlayerSetup';
+import { formatDuration, getRelativeTime } from '../src/shared/utils/timeUtils';
 
 interface AudioData {
   id: string;
@@ -28,6 +29,7 @@ interface AudioData {
   audioUrl: any; // requireの戻り値の型
   description: string;
   layerIds: string[]; // レイヤー情報を追加
+  createdAt?: Date; // 投稿日時（オプショナル）
 }
 
 interface AudioPlayerModalProps {
@@ -50,54 +52,61 @@ export default function AudioPlayerModal({ visible, onClose, audioData }: AudioP
   const progress = useProgress();
 
   // パンレスポンダーでスワイプダウンを検出（ハンドルバーのみに適用）
-  const panResponder = PanResponder.create({
-    onMoveShouldSetPanResponder: (evt, gestureState) => {
-      return gestureState.dy > 0 && Math.abs(gestureState.dy) > Math.abs(gestureState.dx);
-    },
-    onPanResponderMove: (evt, gestureState) => {
-      if (gestureState.dy > 0) {
-        slideAnim.setValue(gestureState.dy);
-      }
-    },
-    onPanResponderRelease: (evt, gestureState) => {
-      if (gestureState.dy > 50) {
-        closeModal();
-      } else {
-        Animated.spring(slideAnim, {
-          toValue: 0,
-          useNativeDriver: true,
-        }).start();
-      }
-    },
-  });
+  const panResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (evt, gestureState) => {
+        return Math.abs(gestureState.dy) > Math.abs(gestureState.dx) && Math.abs(gestureState.dy) > 10;
+      },
+      onPanResponderMove: (evt, gestureState) => {
+        if (gestureState.dy > 0) {
+          slideAnim.setValue(gestureState.dy);
+        }
+      },
+      onPanResponderRelease: (evt, gestureState) => {
+        if (gestureState.dy > 100) {
+          closeModal();
+        } else {
+          // 元の位置に戻す
+          Animated.spring(slideAnim, {
+            toValue: 0,
+            useNativeDriver: true,
+          }).start();
+        }
+      },
+    })
+  ).current;
 
+  // モーダルオープンアニメーション
   const openModal = () => {
-    slideAnim.setValue(screenHeight); // 初期位置を確実に設定
     Animated.spring(slideAnim, {
       toValue: 0,
-      useNativeDriver: true,
-      tension: 100,
+      tension: 80,
       friction: 8,
+      useNativeDriver: true,
     }).start();
   };
 
+  // モーダルクローズアニメーション
   const closeModal = () => {
-    console.log('handleCloseModal called');
     Animated.timing(slideAnim, {
       toValue: screenHeight,
       duration: 300,
       useNativeDriver: true,
-    }).start(async () => {
-      // 音声を停止してクリア
-      try {
-        await TrackPlayer.pause();
-        await TrackPlayer.reset();
-      } catch (error) {
-        console.error('音声停止エラー:', error);
-      }
+    }).start(() => {
       onClose();
     });
   };
+
+  // バックドロップタップでモーダルを閉じる
+  const handleBackdropPress = () => {
+    closeModal();
+  };
+
+  // 再生状態の管理
+  const isPlaying = playbackState.state === State.Playing;
+  const isBuffering = playbackState.state === State.Buffering || 
+                     playbackState.state === State.Loading ||
+                     isLoading;
 
   // TrackPlayerの初期化と音声読み込み
   const setupAndLoadAudio = async () => {
@@ -177,31 +186,20 @@ export default function AudioPlayerModal({ visible, onClose, audioData }: AudioP
     }
   };
 
-  // 時間フォーマット
-  const formatTime = (seconds: number) => {
-    const totalSeconds = Math.floor(seconds);
-    const minutes = Math.floor(totalSeconds / 60);
-    const remainingSeconds = totalSeconds % 60;
-    return `${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
-  };
-
-  if (!visible || !audioData) return null;
-
-  const isPlaying = playbackState.state === State.Playing;
-  const isBuffering = playbackState.state === State.Buffering;
+  if (!audioData) return null;
 
   return (
     <Modal
-      transparent
       visible={visible}
+      transparent={true}
       animationType="none"
       onRequestClose={closeModal}
     >
       <View style={styles.overlay}>
-        <TouchableOpacity 
-          style={styles.backdrop} 
-          activeOpacity={1} 
-          onPress={closeModal}
+        <TouchableOpacity
+          style={styles.backdrop}
+          activeOpacity={1}
+          onPress={handleBackdropPress}
         />
         
         <Animated.View
@@ -211,99 +209,112 @@ export default function AudioPlayerModal({ visible, onClose, audioData }: AudioP
               transform: [{ translateY: slideAnim }],
             },
           ]}
-          {...panResponder.panHandlers}
         >
           {/* ハンドルバー */}
-          <View style={styles.handleContainer}>
+          <View style={styles.handleContainer} {...panResponder.panHandlers}>
             <View style={styles.handle} />
           </View>
-          
-          {/* ユーザー情報 */}
-          <View style={styles.userInfo}>
-            <Image 
-              source={{ uri: audioData.userImage }} 
-              style={styles.userImage}
-            />
-            <View style={styles.userDetails}>
-              <Text style={styles.userName}>{audioData.userName}</Text>
-              <Text style={styles.timeText}>
-                {formatTime(progress.position)} / {formatTime(progress.duration)}
-              </Text>
-            </View>
-          </View>
 
-          {/* 音声コントロール */}
-          <View style={styles.controlsContainer}>
-            <TouchableOpacity 
-              style={styles.controlButton} 
-              onPress={skipBackward}
-              disabled={!isPlayerReady || isBuffering}
-            >
-              <Ionicons name="play-back" size={30} color={!isPlayerReady ? "#999" : "#007AFF"} />
-            </TouchableOpacity>
+          {/* メインコンテンツ */}
+          <View style={styles.content}>
+            {/* メイン横並びセクション */}
+            <View style={styles.mainSection}>
+              {/* 左側：アイコンと名前 */}
+              <View style={styles.leftSection}>
+                <Image source={{ uri: audioData.userImage }} style={styles.userIcon} />
+                <Text style={styles.userName}>{audioData.userName}</Text>
+              </View>
 
-            <TouchableOpacity 
-              style={[styles.playButton, (!isPlayerReady || isBuffering) && styles.disabledButton]} 
-              onPress={togglePlayback}
-              disabled={!isPlayerReady || isBuffering}
-            >
-              {isLoading || isBuffering ? (
-                <Ionicons name="hourglass" size={40} color="#fff" />
-              ) : (
-                <Ionicons 
-                  name={isPlaying ? "pause" : "play"} 
-                  size={40} 
-                  color="#fff" 
-                />
-              )}
-            </TouchableOpacity>
-
-            <TouchableOpacity 
-              style={styles.controlButton} 
-              onPress={skipForward}
-              disabled={!isPlayerReady || isBuffering}
-            >
-              <Ionicons name="play-forward" size={30} color={!isPlayerReady ? "#999" : "#007AFF"} />
-            </TouchableOpacity>
-          </View>
-
-          {/* プログレスバー */}
-          <View style={styles.progressContainer}>
-            <View style={styles.progressBar}>
-              <View 
-                style={[
-                  styles.progressFill, 
-                  { width: `${progress.duration > 0 ? (progress.position / progress.duration) * 100 : 0}%` }
-                ]} 
-              />
-            </View>
-          </View>
-
-          {/* レイヤー情報 */}
-          {audioData?.layerIds && audioData.layerIds.length > 0 && (
-            <View style={styles.layersContainer}>
-              <Text style={styles.layersTitle}>所属レイヤー</Text>
-              <View style={styles.layersGrid}>
-                {getLayersByIds(audioData.layerIds).map((layer) => (
-                  <View key={layer.id} style={styles.layerChip}>
-                    <Ionicons
-                      name={layer.icon as any}
-                      size={16}
-                      color={layer.color}
-                      style={styles.layerIcon}
-                    />
-                    <Text style={[styles.layerName, { color: layer.color }]}>
-                      {layer.name}
+              {/* 右側：プレイヤー部分 */}
+              <View style={styles.rightSection}>
+                {/* タイトルと音声時間、右側に再生コントロール */}
+                <View style={styles.titleSection}>
+                  <View style={styles.titleInfo}>
+                    <Text style={styles.title}>{audioData.title}</Text>
+                    <Text style={styles.duration}>
+                      {formatDuration(progress.position)} / {formatDuration(progress.duration)}
                     </Text>
                   </View>
-                ))}
+
+                  {/* 右側の再生コントロール */}
+                  <View style={styles.playControls}>
+                    <TouchableOpacity 
+                      style={styles.smallControlButton} 
+                      onPress={skipBackward}
+                      disabled={!isPlayerReady || isBuffering}
+                    >
+                      <Ionicons name="play-back" size={20} color={!isPlayerReady ? "#999" : "#007AFF"} />
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[styles.playButton, (!isPlayerReady || isBuffering) && styles.disabledButton]}
+                      onPress={togglePlayback}
+                      disabled={!isPlayerReady}
+                    >
+                      {isBuffering ? (
+                        <Ionicons name="hourglass" size={24} color="#fff" />
+                      ) : (
+                        <Ionicons 
+                          name={isPlaying ? "pause" : "play"} 
+                          size={24} 
+                          color="#fff" 
+                        />
+                      )}
+                    </TouchableOpacity>
+
+                    <TouchableOpacity 
+                      style={styles.smallControlButton} 
+                      onPress={skipForward}
+                      disabled={!isPlayerReady || isBuffering}
+                    >
+                      <Ionicons name="play-forward" size={20} color={!isPlayerReady ? "#999" : "#007AFF"} />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                {/* プログレスバー */}
+                <View style={styles.progressContainer}>
+                  <View style={styles.progressBar}>
+                    <View 
+                      style={[
+                        styles.progressFill, 
+                        { width: `${progress.duration > 0 ? (progress.position / progress.duration) * 100 : 0}%` }
+                      ]} 
+                    />
+                  </View>
+                </View>
+
+                {/* 投稿時間とレイヤー情報 */}
+                <View style={styles.metaInfo}>
+                  <Text style={styles.timeAgo}>
+                    {audioData.createdAt ? getRelativeTime(audioData.createdAt) : "投稿時間不明"}
+                  </Text>
+                  
+                  {audioData.layerIds && audioData.layerIds.length > 0 && (
+                    <View style={styles.layersInfo}>
+                      {getLayersByIds(audioData.layerIds).map((layer, index) => (
+                        <View key={layer.id} style={styles.layerChip}>
+                          <Ionicons
+                            name={layer.icon as any}
+                            size={12}
+                            color={layer.color}
+                            style={styles.layerIcon}
+                          />
+                          <Text style={[styles.layerName, { color: layer.color }]}>
+                            {layer.name}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                </View>
               </View>
             </View>
-          )}
 
-          {/* 説明テキスト */}
-          <View style={styles.descriptionContainer}>
-            <Text style={styles.description}>{audioData.description}</Text>
+            {/* 説明テキスト（全体の下） */}
+            <View style={styles.descriptionContainer}>
+              <Text style={styles.description}>{audioData.description}</Text>
+            </View>
           </View>
         </Animated.View>
       </View>
@@ -328,7 +339,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    padding: 20,
     minHeight: 400,
     maxHeight: screenHeight * 0.8,
   },
@@ -342,59 +352,81 @@ const styles = StyleSheet.create({
     backgroundColor: '#C0C0C0',
     borderRadius: 3,
   },
-  userInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 30,
+  content: {
+    padding: 20,
   },
-  userImage: {
+  mainSection: {
+    flexDirection: 'row',
+    marginBottom: 16,
+  },
+  leftSection: {
+    alignItems: 'center',
+    width: 60, // アイコン幅(60px) + 余白(12px)
+    marginRight: 15,
+  },
+  rightSection: {
+    flex: 1,
+  },
+  userIcon: {
     width: 60,
     height: 60,
     borderRadius: 30,
-    marginRight: 15,
     backgroundColor: '#f0f0f0',
-  },
-  userDetails: {
-    flex: 1,
+    marginBottom: 8,
   },
   userName: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+    textAlign: 'center',
+    lineHeight: 18,
+  },
+  titleSection: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 16,
+  },
+  titleInfo: {
+    flex: 1,
+    marginRight: 16,
+  },
+  title: {
     fontSize: 18,
     fontWeight: 'bold',
     color: '#333',
-    marginBottom: 5,
+    marginBottom: 4,
   },
-  timeText: {
+  duration: {
     fontSize: 14,
     color: '#666',
   },
-  controlsContainer: {
+  playControls: {
     flexDirection: 'row',
-    justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 20,
+    gap: 8,
   },
-  controlButton: {
-    padding: 15,
-    marginHorizontal: 20,
+  smallControlButton: {
+    padding: 8,
   },
   playButton: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: 50,
+    height: 50,
+    borderRadius: 25,
     backgroundColor: '#007AFF',
     justifyContent: 'center',
     alignItems: 'center',
-    elevation: 3,
+    elevation: 2,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
   },
   disabledButton: {
     backgroundColor: '#999',
   },
   progressContainer: {
-    marginBottom: 20,
+    marginBottom: 12,
   },
   progressBar: {
     height: 4,
@@ -406,46 +438,42 @@ const styles = StyleSheet.create({
     height: '100%',
     backgroundColor: '#007AFF',
   },
-  layersContainer: {
-    marginTop: 20,
-    marginBottom: 15,
-  },
-  layersTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 10,
-    textAlign: 'center',
-  },
-  layersGrid: {
+  metaInfo: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-    gap: 8,
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  timeAgo: {
+    fontSize: 14,
+    color: '#666',
+  },
+  layersInfo: {
+    flexDirection: 'row',
+    gap: 6,
   },
   layerChip: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#f8f9fa',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: '#e9ecef',
   },
   layerIcon: {
-    marginRight: 6,
+    marginRight: 4,
   },
   layerName: {
-    fontSize: 12,
+    fontSize: 10,
     fontWeight: '500',
   },
   descriptionContainer: {
-    flex: 1,
+    marginTop: 4,
   },
   description: {
-    fontSize: 16,
-    lineHeight: 24,
+    fontSize: 14,
+    lineHeight: 20,
     color: '#333',
     textAlign: 'left',
   },

@@ -13,6 +13,7 @@ const AUDIO_PINS: AudioPin[] = [
     latitude: 35.0116,
     longitude: 135.7681, // 京都市中心部（京都駅付近）
     layerIds: ['layer-tourism'], // 観光地レイヤー
+    createdAt: new Date(Date.now() - 4 * 60 * 1000), // 4分前
   },
   {
     id: '2',
@@ -24,6 +25,7 @@ const AUDIO_PINS: AudioPin[] = [
     latitude: 35.0395,
     longitude: 135.7290, // 清水寺付近
     layerIds: ['layer-culture', 'layer-tourism'], // 文化と観光地レイヤー
+    createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000), // 2時間前
   },
   {
     id: '3',
@@ -35,6 +37,7 @@ const AUDIO_PINS: AudioPin[] = [
     latitude: 35.0394,
     longitude: 135.7290, // 伏見稲荷付近
     layerIds: ['layer-culture', 'layer-nature'], // 文化と自然レイヤー
+    createdAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000), // 1日前
   },
 ];
 
