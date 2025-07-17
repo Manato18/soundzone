@@ -8,6 +8,7 @@ export interface AudioPin {
   latitude: number;
   longitude: number;
   layerIds: string[]; // 複数のレイヤーに属することが可能
+  createdAt?: Date; // 投稿日時（オプショナル）
 }
 
 export interface AudioPlaybackState {
