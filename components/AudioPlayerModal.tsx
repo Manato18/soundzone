@@ -1,22 +1,23 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  Animated,
-  Dimensions,
-  Image,
-  Modal,
-  PanResponder,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    Animated,
+    Dimensions,
+    Image,
+    Modal,
+    PanResponder,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from 'react-native';
 import TrackPlayer, {
-  State,
-  Track,
-  usePlaybackState,
-  useProgress
+    State,
+    Track,
+    usePlaybackState,
+    useProgress
 } from 'react-native-track-player';
+import { getLayersByIds } from '../src/features/layers/domain/utils/layerUtils';
 import { trackPlayerSetup } from '../src/shared/services/trackPlayerSetup';
 
 interface AudioData {
@@ -26,6 +27,7 @@ interface AudioData {
   userImage: string;
   audioUrl: any; // requireの戻り値の型
   description: string;
+  layerIds: string[]; // レイヤー情報を追加
 }
 
 interface AudioPlayerModalProps {
@@ -277,6 +279,28 @@ export default function AudioPlayerModal({ visible, onClose, audioData }: AudioP
             </View>
           </View>
 
+          {/* レイヤー情報 */}
+          {audioData?.layerIds && audioData.layerIds.length > 0 && (
+            <View style={styles.layersContainer}>
+              <Text style={styles.layersTitle}>所属レイヤー</Text>
+              <View style={styles.layersGrid}>
+                {getLayersByIds(audioData.layerIds).map((layer) => (
+                  <View key={layer.id} style={styles.layerChip}>
+                    <Ionicons
+                      name={layer.icon as any}
+                      size={16}
+                      color={layer.color}
+                      style={styles.layerIcon}
+                    />
+                    <Text style={[styles.layerName, { color: layer.color }]}>
+                      {layer.name}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          )}
+
           {/* 説明テキスト */}
           <View style={styles.descriptionContainer}>
             <Text style={styles.description}>{audioData.description}</Text>
@@ -381,6 +405,40 @@ const styles = StyleSheet.create({
   progressFill: {
     height: '100%',
     backgroundColor: '#007AFF',
+  },
+  layersContainer: {
+    marginTop: 20,
+    marginBottom: 15,
+  },
+  layersTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 10,
+    textAlign: 'center',
+  },
+  layersGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  layerChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f8f9fa',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#e9ecef',
+  },
+  layerIcon: {
+    marginRight: 6,
+  },
+  layerName: {
+    fontSize: 12,
+    fontWeight: '500',
   },
   descriptionContainer: {
     flex: 1,

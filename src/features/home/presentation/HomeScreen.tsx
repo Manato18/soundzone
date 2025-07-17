@@ -3,7 +3,10 @@ import { StyleSheet, View } from 'react-native';
 import MapView from 'react-native-maps';
 import AudioPlayerModal from '../../../../components/AudioPlayerModal';
 import { AudioPinMarkers } from '../../audioPin/presentation/components/AudioPinMarkers';
+import { useAudioPinFiltering } from '../../audioPin/presentation/hooks/useAudioPinFiltering';
 import { useAudioPins } from '../../audioPin/presentation/hooks/useAudioPins';
+import { LayerSelector } from '../../layers/presentation/components/LayerSelector';
+import { useLayerSelection } from '../../layers/presentation/hooks/useLayerSelection';
 import { useLocation } from '../../location/presentation/hooks/useLocation';
 import { LocationButton } from '../../map/presentation/components/LocationButton';
 import { MapContainer } from '../../map/presentation/components/MapContainer';
@@ -17,6 +20,13 @@ export default function HomeScreen() {
   const { location, errorMsg } = useLocation();
   const { audioPins, selectedAudio, modalVisible, handlePinPress, handleCloseModal } = useAudioPins();
   const { region, updateRegion } = useMapRegion();
+  
+  // レイヤー機能
+  const { layers, toggleLayer, getSelectedLayerIds } = useLayerSelection();
+  const { filteredPins } = useAudioPinFiltering({
+    pins: audioPins,
+    selectedLayerIds: getSelectedLayerIds(),
+  });
 
   // 現在位置を中心に戻すハンドラー
   const centerOnUserLocation = () => {
@@ -42,10 +52,15 @@ export default function HomeScreen() {
         userLocation={location}
       >
         <AudioPinMarkers
-          pins={audioPins}
+          pins={filteredPins}
           onPinPress={handlePinPress}
         />
       </MapContainer>
+
+      <LayerSelector
+        layers={layers}
+        onLayerToggle={toggleLayer}
+      />
 
       <LocationButton
         onPress={centerOnUserLocation}
