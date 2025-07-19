@@ -15,7 +15,10 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.anonymous.soundzone",
       "infoPlist": {
-        "UIBackgroundModes": ["audio"]
+        "UIBackgroundModes": [
+          "audio"
+        ],
+        "NSMicrophoneUsageDescription": "このアプリは音声を録音するためにマイクを使用します。"
       }
     },
     "android": {
@@ -29,7 +32,10 @@
         "googleMaps": {
           "apiKey": "AIzaSyDgC7jVfQc-5qL6Dl-9G0LdrP9UnHB3pp4"
         }
-      }
+      },
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "bundler": "metro",
@@ -46,8 +52,15 @@
           "resizeMode": "contain",
           "backgroundColor": "#ffffff"
         }
-              ],
-        "expo-asset"
-      ]
+      ],
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "このアプリは音声を録音するためにマイクを使用します。"
+        }
+      ],
+      "expo-asset",
+      "expo-router"
+    ]
   }
 }

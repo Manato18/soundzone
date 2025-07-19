@@ -1,9 +1,9 @@
-import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
-import { ActivityIndicator, View, StyleSheet } from 'react-native';
+import React from 'react';
+import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { useAuth } from '../features/auth/presentation/AuthContext';
-import AuthNavigator from './AuthNavigator';
 import AppNavigator from './AppNavigator';
+import AuthNavigator from './AuthNavigator';
 
 export default function RootNavigator() {
   const { session, isLoading } = useAuth();

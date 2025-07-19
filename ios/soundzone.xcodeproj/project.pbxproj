@@ -7,12 +7,12 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		0AA21996FEA02E41AC0F8B1B /* ExpoModulesProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24F917614F7F5D37315B71E5 /* ExpoModulesProvider.swift */; };
 		13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB51A68108700A75B9A /* Images.xcassets */; };
-		28637BAD9F86D4947D86434A /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = A39701133A9C75922E0E62B0 /* PrivacyInfo.xcprivacy */; };
 		3E461D99554A48A4959DE609 /* SplashScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */; };
-		677D9C945A9FE7C615640C14 /* libPods-soundzone.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 3108B154E3C4F3064149D13F /* libPods-soundzone.a */; };
+		464B3505E74F84D3628741E1 /* libPods-soundzone.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 49FE40515A51C3107C37FFB3 /* libPods-soundzone.a */; };
+		62FAAAFFAFE2BD140A8FDC37 /* ExpoModulesProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1614DB65A334C6737945B9E /* ExpoModulesProvider.swift */; };
 		BB2F792D24A3F905000567C9 /* Expo.plist in Resources */ = {isa = PBXBuildFile; fileRef = BB2F792C24A3F905000567C9 /* Expo.plist */; };
+		D3C137DDC874BBA47AB66017 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = AEE576400E8DF80A0A4953FF /* PrivacyInfo.xcprivacy */; };
 		F11748422D0307B40044C1D9 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = F11748412D0307B40044C1D9 /* AppDelegate.swift */; };
 /* End PBXBuildFile section */
 
@@ -20,13 +20,13 @@
 		13B07F961A680F5B00A75B9A /* soundzone.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = soundzone.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		13B07FB51A68108700A75B9A /* Images.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Images.xcassets; path = soundzone/Images.xcassets; sourceTree = "<group>"; };
 		13B07FB61A68108700A75B9A /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = Info.plist; path = soundzone/Info.plist; sourceTree = "<group>"; };
-		24F917614F7F5D37315B71E5 /* ExpoModulesProvider.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ExpoModulesProvider.swift; path = "Pods/Target Support Files/Pods-soundzone/ExpoModulesProvider.swift"; sourceTree = "<group>"; };
-		3108B154E3C4F3064149D13F /* libPods-soundzone.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-soundzone.a"; sourceTree = BUILT_PRODUCTS_DIR; };
-		614A74EA7E80C798808A2ED6 /* Pods-soundzone.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-soundzone.release.xcconfig"; path = "Target Support Files/Pods-soundzone/Pods-soundzone.release.xcconfig"; sourceTree = "<group>"; };
-		A39701133A9C75922E0E62B0 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; name = PrivacyInfo.xcprivacy; path = soundzone/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		49FE40515A51C3107C37FFB3 /* libPods-soundzone.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-soundzone.a"; sourceTree = BUILT_PRODUCTS_DIR; };
+		71F15143A37C0EF1F9A9DA41 /* Pods-soundzone.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-soundzone.release.xcconfig"; path = "Target Support Files/Pods-soundzone/Pods-soundzone.release.xcconfig"; sourceTree = "<group>"; };
 		AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = SplashScreen.storyboard; path = soundzone/SplashScreen.storyboard; sourceTree = "<group>"; };
+		AEE576400E8DF80A0A4953FF /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; name = PrivacyInfo.xcprivacy; path = soundzone/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		BB2F792C24A3F905000567C9 /* Expo.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = Expo.plist; sourceTree = "<group>"; };
-		BCE489A890D85088EEBD4C83 /* Pods-soundzone.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-soundzone.debug.xcconfig"; path = "Target Support Files/Pods-soundzone/Pods-soundzone.debug.xcconfig"; sourceTree = "<group>"; };
+		DC69155A05A61499DDB115D5 /* Pods-soundzone.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-soundzone.debug.xcconfig"; path = "Target Support Files/Pods-soundzone/Pods-soundzone.debug.xcconfig"; sourceTree = "<group>"; };
+		E1614DB65A334C6737945B9E /* ExpoModulesProvider.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ExpoModulesProvider.swift; path = "Pods/Target Support Files/Pods-soundzone/ExpoModulesProvider.swift"; sourceTree = "<group>"; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
 		F11748412D0307B40044C1D9 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = soundzone/AppDelegate.swift; sourceTree = "<group>"; };
 		F11748442D0722820044C1D9 /* soundzone-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = "soundzone-Bridging-Header.h"; path = "soundzone/soundzone-Bridging-Header.h"; sourceTree = "<group>"; };
@@ -37,7 +37,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				677D9C945A9FE7C615640C14 /* libPods-soundzone.a in Frameworks */,
+				464B3505E74F84D3628741E1 /* libPods-soundzone.a in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -53,7 +53,7 @@
 				13B07FB51A68108700A75B9A /* Images.xcassets */,
 				13B07FB61A68108700A75B9A /* Info.plist */,
 				AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */,
-				A39701133A9C75922E0E62B0 /* PrivacyInfo.xcprivacy */,
+				AEE576400E8DF80A0A4953FF /* PrivacyInfo.xcprivacy */,
 			);
 			name = soundzone;
 			sourceTree = "<group>";
@@ -62,27 +62,17 @@
 			isa = PBXGroup;
 			children = (
 				ED297162215061F000B7C4FE /* JavaScriptCore.framework */,
-				3108B154E3C4F3064149D13F /* libPods-soundzone.a */,
+				49FE40515A51C3107C37FFB3 /* libPods-soundzone.a */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
 		};
-		434434EDB76BAF6DE3C1DA91 /* Pods */ = {
+		70DB8C675DA27B9516697EB6 /* ExpoModulesProviders */ = {
 			isa = PBXGroup;
 			children = (
-				BCE489A890D85088EEBD4C83 /* Pods-soundzone.debug.xcconfig */,
-				614A74EA7E80C798808A2ED6 /* Pods-soundzone.release.xcconfig */,
+				AA3200C7EF4AA6F75F855BB9 /* soundzone */,
 			);
-			name = Pods;
-			path = Pods;
-			sourceTree = "<group>";
-		};
-		82B1CBF68199A30ADF008060 /* soundzone */ = {
-			isa = PBXGroup;
-			children = (
-				24F917614F7F5D37315B71E5 /* ExpoModulesProvider.swift */,
-			);
-			name = soundzone;
+			name = ExpoModulesProviders;
 			sourceTree = "<group>";
 		};
 		832341AE1AAA6A7D00B99B32 /* Libraries */ = {
@@ -99,8 +89,8 @@
 				832341AE1AAA6A7D00B99B32 /* Libraries */,
 				83CBBA001A601CBA00E9B192 /* Products */,
 				2D16E6871FA4F8E400B85C8A /* Frameworks */,
-				434434EDB76BAF6DE3C1DA91 /* Pods */,
-				8B4F0B60CE66F3AF724830FE /* ExpoModulesProviders */,
+				88CC5C75CF03134DA99CC807 /* Pods */,
+				70DB8C675DA27B9516697EB6 /* ExpoModulesProviders */,
 			);
 			indentWidth = 2;
 			sourceTree = "<group>";
@@ -115,12 +105,22 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
-		8B4F0B60CE66F3AF724830FE /* ExpoModulesProviders */ = {
+		88CC5C75CF03134DA99CC807 /* Pods */ = {
 			isa = PBXGroup;
 			children = (
-				82B1CBF68199A30ADF008060 /* soundzone */,
+				DC69155A05A61499DDB115D5 /* Pods-soundzone.debug.xcconfig */,
+				71F15143A37C0EF1F9A9DA41 /* Pods-soundzone.release.xcconfig */,
 			);
-			name = ExpoModulesProviders;
+			name = Pods;
+			path = Pods;
+			sourceTree = "<group>";
+		};
+		AA3200C7EF4AA6F75F855BB9 /* soundzone */ = {
+			isa = PBXGroup;
+			children = (
+				E1614DB65A334C6737945B9E /* ExpoModulesProvider.swift */,
+			);
+			name = soundzone;
 			sourceTree = "<group>";
 		};
 		BB2F792B24A3F905000567C9 /* Supporting */ = {
@@ -140,13 +140,13 @@
 			buildConfigurationList = 13B07F931A680F5B00A75B9A /* Build configuration list for PBXNativeTarget "soundzone" */;
 			buildPhases = (
 				08A4A3CD28434E44B6B9DE2E /* [CP] Check Pods Manifest.lock */,
-				38A04277AB9AC191A14C1977 /* [Expo] Configure project */,
+				0EBDED012DE1801E3241FCCD /* [Expo] Configure project */,
 				13B07F871A680F5B00A75B9A /* Sources */,
 				13B07F8C1A680F5B00A75B9A /* Frameworks */,
 				13B07F8E1A680F5B00A75B9A /* Resources */,
 				00DD1BFF1BD5951E006B06BC /* Bundle React Native code and images */,
 				800E24972A6A228C8D4807E9 /* [CP] Copy Pods Resources */,
-				C782FE80F790DE728A81E15F /* [CP] Embed Pods Frameworks */,
+				5129596129657E56930CCC4F /* [CP] Embed Pods Frameworks */,
 			);
 			buildRules = (
 			);
@@ -166,8 +166,8 @@
 				LastUpgradeCheck = 1130;
 				TargetAttributes = {
 					13B07F861A680F5B00A75B9A = {
-						DevelopmentTeam = MH2999W3SY;
 						LastSwiftMigration = 1250;
+						DevelopmentTeam = "MH2999W3SY";
 						ProvisioningStyle = Automatic;
 					};
 				};
@@ -198,7 +198,7 @@
 				BB2F792D24A3F905000567C9 /* Expo.plist in Resources */,
 				13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */,
 				3E461D99554A48A4959DE609 /* SplashScreen.storyboard in Resources */,
-				28637BAD9F86D4947D86434A /* PrivacyInfo.xcprivacy in Resources */,
+				D3C137DDC874BBA47AB66017 /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -242,7 +242,7 @@
 			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
 			showEnvVarsInLog = 0;
 		};
-		38A04277AB9AC191A14C1977 /* [Expo] Configure project */ = {
+		0EBDED012DE1801E3241FCCD /* [Expo] Configure project */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
 			buildActionMask = 2147483647;
@@ -260,6 +260,24 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "# This script configures Expo modules and generates the modules provider file.\nbash -l -c \"./Pods/Target\\ Support\\ Files/Pods-soundzone/expo-configure-project.sh\"\n";
+		};
+		5129596129657E56930CCC4F /* [CP] Embed Pods Frameworks */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+				"${PODS_ROOT}/Target Support Files/Pods-soundzone/Pods-soundzone-frameworks.sh",
+				"${PODS_XCFRAMEWORKS_BUILD_DIR}/hermes-engine/Pre-built/hermes.framework/hermes",
+			);
+			name = "[CP] Embed Pods Frameworks";
+			outputPaths = (
+				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/hermes.framework",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-soundzone/Pods-soundzone-frameworks.sh\"\n";
+			showEnvVarsInLog = 0;
 		};
 		800E24972A6A228C8D4807E9 /* [CP] Copy Pods Resources */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -305,24 +323,6 @@
 			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-soundzone/Pods-soundzone-resources.sh\"\n";
 			showEnvVarsInLog = 0;
 		};
-		C782FE80F790DE728A81E15F /* [CP] Embed Pods Frameworks */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputPaths = (
-				"${PODS_ROOT}/Target Support Files/Pods-soundzone/Pods-soundzone-frameworks.sh",
-				"${PODS_XCFRAMEWORKS_BUILD_DIR}/hermes-engine/Pre-built/hermes.framework/hermes",
-			);
-			name = "[CP] Embed Pods Frameworks";
-			outputPaths = (
-				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/hermes.framework",
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-soundzone/Pods-soundzone-frameworks.sh\"\n";
-			showEnvVarsInLog = 0;
-		};
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -331,7 +331,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				F11748422D0307B40044C1D9 /* AppDelegate.swift in Sources */,
-				0AA21996FEA02E41AC0F8B1B /* ExpoModulesProvider.swift in Sources */,
+				62FAAAFFAFE2BD140A8FDC37 /* ExpoModulesProvider.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -340,15 +340,12 @@
 /* Begin XCBuildConfiguration section */
 		13B07F941A680F5B00A75B9A /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = BCE489A890D85088EEBD4C83 /* Pods-soundzone.debug.xcconfig */;
+			baseConfigurationReference = DC69155A05A61499DDB115D5 /* Pods-soundzone.debug.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = soundzone/soundzone.entitlements;
-				CODE_SIGN_IDENTITY = "Apple Development";
-				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = MH2999W3SY;
 				ENABLE_BITCODE = NO;
 				GCC_PREPROCESSOR_DEFINITIONS = (
 					"$(inherited)",
@@ -374,20 +371,20 @@
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				VERSIONING_SYSTEM = "apple-generic";
+				DEVELOPMENT_TEAM = "MH2999W3SY";
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
 			};
 			name = Debug;
 		};
 		13B07F951A680F5B00A75B9A /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = 614A74EA7E80C798808A2ED6 /* Pods-soundzone.release.xcconfig */;
+			baseConfigurationReference = 71F15143A37C0EF1F9A9DA41 /* Pods-soundzone.release.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = soundzone/soundzone.entitlements;
-				CODE_SIGN_IDENTITY = "Apple Development";
-				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = MH2999W3SY;
 				INFOPLIST_FILE = soundzone/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -407,6 +404,9 @@
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				VERSIONING_SYSTEM = "apple-generic";
+				DEVELOPMENT_TEAM = "MH2999W3SY";
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
 			};
 			name = Release;
 		};

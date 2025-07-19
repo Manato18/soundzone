@@ -38,12 +38,44 @@ export const getRelativeTime = (date: Date | undefined): string => {
 };
 
 /**
- * 音声の長さを分:秒形式で表示する
- * @param seconds 秒数
- * @returns "MM:SS"形式の文字列
+ * ミリ秒を MM:SS 形式の文字列に変換する
+ * @param milliseconds - 変換するミリ秒
+ * @returns フォーマットされた時間文字列 (例: "01:23")
  */
-export const formatDuration = (seconds: number): string => {
-  const mins = Math.floor(seconds / 60);
-  const secs = Math.floor(seconds % 60);
-  return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+export const formatDuration = (milliseconds: number): string => {
+  const totalSeconds = Math.floor(milliseconds / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  
+  return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+};
+
+/**
+ * 秒を MM:SS 形式の文字列に変換する
+ * @param seconds - 変換する秒数
+ * @returns フォーマットされた時間文字列 (例: "01:23")
+ */
+export const formatDurationFromSeconds = (seconds: number): string => {
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  
+  return `${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
+};
+
+/**
+ * ミリ秒を HH:MM:SS 形式の文字列に変換する
+ * @param milliseconds - 変換するミリ秒
+ * @returns フォーマットされた時間文字列 (例: "01:23:45")
+ */
+export const formatLongDuration = (milliseconds: number): string => {
+  const totalSeconds = Math.floor(milliseconds / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  
+  if (hours > 0) {
+    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+  }
+  
+  return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
 }; 

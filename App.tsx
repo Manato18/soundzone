@@ -1,8 +1,8 @@
-import React from 'react';
-import { StatusBar } from 'expo-status-bar';
 import { useFonts } from 'expo-font';
-import 'react-native-reanimated';
+import { StatusBar } from 'expo-status-bar';
+import React from 'react';
 import 'react-native-gesture-handler';
+import 'react-native-reanimated';
 
 import { AuthProvider } from './src/features/auth/presentation/AuthContext';
 import RootNavigator from './src/navigation/RootNavigator';

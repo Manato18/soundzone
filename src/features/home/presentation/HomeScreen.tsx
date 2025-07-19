@@ -1,5 +1,5 @@
 import React, { useRef } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import MapView from 'react-native-maps';
 import AudioPlayerModal from '../../../../components/AudioPlayerModal';
 import { AudioPinMarkers } from '../../audioPin/presentation/components/AudioPinMarkers';
@@ -18,7 +18,16 @@ export default function HomeScreen() {
   
   // 各ドメインのhookを使用
   const { location, errorMsg } = useLocation();
-  const { audioPins, selectedAudio, modalVisible, handlePinPress, handleCloseModal } = useAudioPins();
+  const { 
+    audioPins, 
+    selectedAudio, 
+    modalVisible, 
+    isLoading, 
+    error: audioPinError,
+    handlePinPress, 
+    handleCloseModal,
+    refreshPins
+  } = useAudioPins();
   const { region, updateRegion } = useMapRegion();
   
   // レイヤー機能
@@ -57,6 +66,13 @@ export default function HomeScreen() {
         />
       </MapContainer>
 
+      {/* オーディオピン読み込み中のインジケーター */}
+      {isLoading && (
+        <View style={styles.loadingOverlay}>
+          <ActivityIndicator size="large" color="#4a9eff" />
+        </View>
+      )}
+
       <LayerSelector
         layers={layers}
         onLayerToggle={toggleLayer}
@@ -67,7 +83,16 @@ export default function HomeScreen() {
         disabled={!location}
       />
 
+      {/* 位置情報エラーの表示 */}
       <ErrorDisplay errorMsg={errorMsg} />
+
+      {/* オーディオピンエラーの表示 */}
+      {audioPinError && (
+        <ErrorDisplay 
+          errorMsg={`音声ピンの読み込みエラー: ${audioPinError}`}
+          onRetry={refreshPins}
+        />
+      )}
 
       {/* 音声再生モーダル */}
       <AudioPlayerModal
@@ -82,5 +107,13 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  loadingOverlay: {
+    position: 'absolute',
+    top: 100,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    zIndex: 10,
   },
 }); 
