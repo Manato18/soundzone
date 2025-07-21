@@ -17,15 +17,13 @@ export default function RootNavigator() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         console.log('Auth state changed:', event, session?.user?.email);
-        console.log('Auth status details:', authStatusDetails);
         
-        if (event === 'SIGNED_OUT' || event === 'TOKEN_REFRESHED') {
-          if (event === 'SIGNED_OUT') {
-            // サインアウト時はキャッシュをクリア
-            console.log('Clearing auth cache due to sign out');
-            queryClient.setQueryData(queryKeys.auth.session(), null);
-            queryClient.removeQueries({ queryKey: queryKeys.auth.all });
-          }
+        if (event === 'SIGNED_OUT') {
+          // サインアウト時はキャッシュをクリア
+          console.log('Clearing auth cache due to sign out');
+          queryClient.setQueryData(queryKeys.auth.user(), null);
+          queryClient.setQueryData(queryKeys.auth.session(), null);
+          queryClient.removeQueries({ queryKey: queryKeys.auth.all });
           
           // 認証クエリを無効化して再取得
           await queryClient.invalidateQueries({ queryKey: queryKeys.auth.all });
@@ -33,12 +31,15 @@ export default function RootNavigator() {
           // サインイン時も認証クエリを無効化して最新情報を取得
           console.log('User signed in, invalidating auth queries');
           await queryClient.invalidateQueries({ queryKey: queryKeys.auth.all });
+        } else if (event === 'TOKEN_REFRESHED') {
+          // トークン更新時も最新情報を取得
+          await queryClient.invalidateQueries({ queryKey: queryKeys.auth.all });
         }
       }
     );
 
     return () => subscription.unsubscribe();
-  }, [queryClient, authStatusDetails]);
+  }, [queryClient]);
 
   // ローディング中の表示
   if (isLoading) {
