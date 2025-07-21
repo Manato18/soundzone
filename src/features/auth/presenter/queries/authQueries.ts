@@ -1,14 +1,38 @@
 import {
   useMutation,
+  UseMutationOptions,
   useQuery,
   useQueryClient,
-  UseMutationOptions,
   UseQueryOptions,
 } from '@tanstack/react-query';
 
-import { queryKeys, handleQueryError } from '../../../../shared/presenter/queries/queryClient';
-import { SignInRequest, SignInResponse } from '../../application/useCases/SignInUseCase';
-import { AuthContainer } from '../../application/container/AuthContainer';
+import { MMKVStorage, StorageKeys } from '../../../../shared/infra/storage/mmkvStorage';
+import { handleQueryError, queryKeys } from '../../../../shared/presenter/queries/queryClient';
+import { supabase } from '../../../../shared/services/supabase';
+
+// 認証リクエスト・レスポンス型定義
+export interface SignInRequest {
+  email: string;
+  password: string;
+}
+
+export interface SignInResponse {
+  success: boolean;
+  user?: QueryUser;
+  error?: string;
+}
+
+export interface SignUpRequest {
+  email: string;
+  password: string;
+}
+
+export interface SignUpResponse {
+  success: boolean;
+  user?: QueryUser;
+  needsEmailVerification: boolean;
+  error?: string;
+}
 
 // TanStack Query用のユーザー型（シンプル版）
 export interface QueryUser {
@@ -19,13 +43,6 @@ export interface QueryUser {
   avatarUrl?: string;
 }
 
-// UseCaseインスタンス（DIコンテナから取得）
-const authContainer = AuthContainer.getInstance();
-const signInUseCase = authContainer.getSignInUseCase();
-const signUpUseCase = authContainer.getSignUpUseCase();
-const signOutUseCase = authContainer.getSignOutUseCase();
-const getCurrentUserUseCase = authContainer.getGetCurrentUserUseCase();
-
 // 現在のユーザー情報を取得するクエリ
 export const useCurrentUserQuery = (
   options?: Omit<UseQueryOptions<QueryUser | null, Error>, 'queryKey' | 'queryFn'>
@@ -34,33 +51,36 @@ export const useCurrentUserQuery = (
     queryKey: queryKeys.auth.user(),
     queryFn: async () => {
       try {
-        const result = await getCurrentUserUseCase.execute();
-        if (!result.success) {
-          // エラーがセッション関連の場合はnullを返す（エラーをthrowしない）
-          if (result.error?.includes('session') || result.error?.includes('認証')) {
-            return null;
-          }
-          // その他のエラーはthrow
-          throw new Error(result.error || 'ユーザー情報取得に失敗しました');
-        }
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
         
-        if (!result.user) {
+        if (sessionError || !session) {
+          console.log('No valid session found');
           return null;
         }
+
+        const { data: { user }, error: userError } = await supabase.auth.getUser();
         
-        return result.user;
+        if (userError || !user) {
+          console.log('No valid user found');
+          return null;
+        }
+
+        console.log('User query successful:', user.email);
+        return {
+          id: user.id,
+          email: user.email || '',
+          emailVerified: user.email_confirmed_at !== null,
+          name: user.user_metadata?.name,
+          avatarUrl: user.user_metadata?.avatar_url,
+        };
       } catch (error) {
-        // セッション関連エラーの場合はnullを返す
-        if (error instanceof Error && 
-            (error.message.includes('認証') || 
-             error.message.includes('session') || 
-             error.message.includes('Auth session missing'))) {
-          return null;
-        }
-        throw error;
+        console.error('Current user query error:', error);
+        return null;
       }
     },
     staleTime: 5 * 60 * 1000, // 5分間キャッシュ
+    refetchOnMount: true, // マウント時に再フェッチ
+    refetchOnWindowFocus: false, // ウィンドウフォーカス時は再フェッチしない
     ...options,
   });
 };
@@ -72,10 +92,28 @@ export const useSessionQuery = (
   return useQuery({
     queryKey: queryKeys.auth.session(),
     queryFn: async () => {
-      // セッション取得の実装が必要な場合
-      // とりあえずCurrentUserから推測
-      const result = await getCurrentUserUseCase.execute();
-      return result.user ? { authenticated: true, user: result.user } : null;
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession();
+        
+        if (error || !session) {
+          return null;
+        }
+
+        return { 
+          authenticated: true, 
+          session,
+          user: {
+            id: session.user.id,
+            email: session.user.email || '',
+            emailVerified: session.user.email_confirmed_at !== null,
+            name: session.user.user_metadata?.name,
+            avatarUrl: session.user.user_metadata?.avatar_url,
+          }
+        };
+      } catch (error) {
+        console.error('Session query error:', error);
+        return null;
+      }
     },
     staleTime: 5 * 60 * 1000,
     ...options,
@@ -89,18 +127,54 @@ export const useSignInMutation = (
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (request: SignInRequest) => {
-      return await signInUseCase.execute(request);
+    mutationFn: async ({ email, password }: SignInRequest): Promise<SignInResponse> => {
+      try {
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+
+        if (error) {
+          return {
+            success: false,
+            error: error.message,
+          };
+        }
+
+        if (data.user) {
+          const user = {
+            id: data.user.id,
+            email: data.user.email || '',
+            emailVerified: data.user.email_confirmed_at !== null,
+            name: data.user.user_metadata?.name,
+            avatarUrl: data.user.user_metadata?.avatar_url,
+          };
+
+          // ログイン成功時にMMKVに保存
+          MMKVStorage.setString(StorageKeys.LAST_LOGIN_EMAIL, email);
+
+          return {
+            success: true,
+            user,
+          };
+        }
+
+        return {
+          success: false,
+          error: 'ログインに失敗しました',
+        };
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : '予期しないエラーが発生しました',
+        };
+      }
     },
     onSuccess: (data) => {
       if (data.success && data.user) {
         // キャッシュを更新
         queryClient.setQueryData(queryKeys.auth.user(), data.user);
-        queryClient.setQueryData(queryKeys.auth.session(), {
-          authenticated: true,
-          user: data.user,
-          session: data.session,
-        });
+        queryClient.invalidateQueries({ queryKey: queryKeys.auth.session() });
       }
     },
     onError: (error) => {
@@ -112,26 +186,60 @@ export const useSignInMutation = (
 
 // サインアップミューテーション
 export const useSignUpMutation = (
-  options?: Omit<
-    UseMutationOptions<any, Error, { email: string; password: string }>,
-    'mutationFn'
-  >
+  options?: Omit<UseMutationOptions<SignUpResponse, Error, SignUpRequest>, 'mutationFn'>
 ) => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ email, password }: { email: string; password: string }) => {
-      return await signUpUseCase.execute({ email, password });
+    mutationFn: async ({ email, password }: SignUpRequest): Promise<SignUpResponse> => {
+      try {
+        const { data, error } = await supabase.auth.signUp({
+          email,
+          password,
+        });
+
+        if (error) {
+          return {
+            success: false,
+            needsEmailVerification: false,
+            error: error.message,
+          };
+        }
+
+        if (data.user) {
+          const user = {
+            id: data.user.id,
+            email: data.user.email || '',
+            emailVerified: data.user.email_confirmed_at !== null,
+            name: data.user.user_metadata?.name,
+            avatarUrl: data.user.user_metadata?.avatar_url,
+          };
+
+          return {
+            success: true,
+            user,
+            needsEmailVerification: !data.session, // セッションがない場合はメール認証が必要
+          };
+        }
+
+        return {
+          success: false,
+          needsEmailVerification: false,
+          error: 'サインアップに失敗しました',
+        };
+      } catch (error) {
+        return {
+          success: false,
+          needsEmailVerification: false,
+          error: error instanceof Error ? error.message : '予期しないエラーが発生しました',
+        };
+      }
     },
     onSuccess: (data) => {
       if (data.success && data.user) {
         // サインアップ成功時はキャッシュを更新
         queryClient.setQueryData(queryKeys.auth.user(), data.user);
-        queryClient.setQueryData(queryKeys.auth.session(), {
-          authenticated: true,
-          user: data.user,
-          needsEmailVerification: data.needsEmailVerification,
-        });
+        queryClient.invalidateQueries({ queryKey: queryKeys.auth.session() });
       }
     },
     onError: (error) => {
@@ -149,13 +257,26 @@ export const useSignOutMutation = (
 
   return useMutation({
     mutationFn: async () => {
-      await signOutUseCase.execute();
+      const { error } = await supabase.auth.signOut();
+      
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      // MMKVから認証情報をクリア
+      MMKVStorage.delete(StorageKeys.AUTH_SESSION);
+      MMKVStorage.delete(StorageKeys.AUTH_USER);
+      MMKVStorage.delete(StorageKeys.AUTH_TOKENS);
     },
-    onSuccess: () => {
+    onSuccess: async () => {
+      console.log('Sign out successful - clearing cache');
       // 認証関連のクエリをクリア
       queryClient.setQueryData(queryKeys.auth.user(), null);
       queryClient.setQueryData(queryKeys.auth.session(), null);
       queryClient.removeQueries({ queryKey: queryKeys.auth.all });
+      
+      // 認証クエリを強制的に無効化・再実行
+      await queryClient.invalidateQueries({ queryKey: queryKeys.auth.all });
       
       // 他の認証が必要なクエリも無効化
       queryClient.invalidateQueries();
@@ -167,27 +288,17 @@ export const useSignOutMutation = (
   });
 };
 
-// パスワードリセットミューテーション（将来実装）
+// パスワードリセットミューテーション
 export const usePasswordResetMutation = (
   options?: Omit<UseMutationOptions<void, Error, { email: string }>, 'mutationFn'>
 ) => {
   return useMutation({
     mutationFn: async ({ email }: { email: string }) => {
-      // TODO: パスワードリセットUseCase実装後に更新
-      throw new Error('パスワードリセット機能は未実装です');
-    },
-    ...options,
-  });
-};
-
-// メール認証ミューテーション（将来実装）
-export const useEmailVerificationMutation = (
-  options?: Omit<UseMutationOptions<void, Error, { token: string }>, 'mutationFn'>
-) => {
-  return useMutation({
-    mutationFn: async ({ token }: { token: string }) => {
-      // TODO: メール認証UseCase実装後に更新
-      throw new Error('メール認証機能は未実装です');
+      const { error } = await supabase.auth.resetPasswordForEmail(email);
+      
+      if (error) {
+        throw new Error(error.message);
+      }
     },
     ...options,
   });
