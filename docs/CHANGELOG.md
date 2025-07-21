@@ -1,5 +1,120 @@
 # SoundZone - 変更履歴
 
+## [3.1.1] - 2025-01-22 - 🛠️ iOS ビルドエラー修正 & 認証アーキテクチャ最終調整
+
+### 🏗️ 認証システムアーキテクチャ最終統合
+#### 📁 フォルダ構造の大幅再編成（Clean Architecture完全準拠）
+- **新しいディレクトリ構成**
+  ```
+  src/features/auth/
+  ├── application/          # アプリケーション層（ビジネスロジック）
+  │   └── auth-store.ts    # Zustand統合状態管理
+  ├── domain/              # ドメイン層（既存維持）
+  │   └── entities/
+  │       └── User.ts      # ユーザーエンティティ
+  ├── infrastructure/      # インフラ層（外部連携）
+  │   └── auth-service.ts  # Supabase認証サービス
+  └── presentation/        # プレゼンテーション層（UI）
+      ├── LoginScreen.tsx
+      ├── SignUpScreen.tsx
+      ├── EmailVerificationScreen.tsx
+      └── hooks/
+          └── use-auth.ts  # 統合プレゼンテーションフック
+  ```
+
+#### 🔄 レイヤー間責務の明確化
+- **Application層新規実装**
+  - `auth-store.ts`: Zustand + TanStack Query統合状態管理
+  - UI状態（フォーム・モーダル・エラー）とサーバー状態の完全分離
+  - 永続化設定（MMKV連携）・認証状態管理の統一化
+- **Infrastructure層新規実装**
+  - `auth-service.ts`: Supabase認証API抽象化
+  - インターフェース定義（`AuthService`）とSupabase実装（`SupabaseAuthService`）
+  - エラーハンドリング・型安全な結果返却（`AuthResult<T>`, `SignUpResult`）
+- **Presentation層統合**
+  - `use-auth.ts`: TanStack Query Mutations + Zustand Selectorsの統合
+  - フォーム専用フック（`useLoginFormHook`, `useSignUpFormHook`, `useEmailVerificationHook`）
+  - プレゼンテーション層でのビジネスロジック完全抽象化
+
+#### 📝 削除・統合されたファイル
+- **削除**: `src/features/auth/presenter/` ディレクトリ完全削除
+  - `presenter/hooks/useAuth.ts` → `presentation/hooks/use-auth.ts` に統合
+  - `presenter/queries/authQueries.ts` → `presentation/hooks/use-auth.ts` に統合  
+  - `presenter/stores/authStore.ts` → `application/auth-store.ts` に統合
+- **Clean Architecture準拠**: presenterレイヤー廃止、標準的な4層アーキテクチャに統一
+
+#### 🎯 コード品質・機能向上
+- **auth-store.ts（Application層）**
+  - Zustand subscribeWithSelector ミドルウェア活用
+  - UI状態の完全型安全管理（loginForm, signUpForm, emailVerification）
+  - 永続化設定統合（MMKV連携）
+  - セレクター最適化による再描画最小化
+- **auth-service.ts（Infrastructure層）**
+  - `AuthService` インターフェース定義による抽象化
+  - Supabaseエラーメッセージの日本語翻訳
+  - OTP認証完全対応（signup/email/recovery対応）
+  - 型安全な結果型（`AuthResult<T>`, `SignUpResult`）
+- **use-auth.ts（Presentation層）**
+  - TanStack Query mutations完全統合
+  - フォーム専用hooks分離（バリデーション・エラーハンドリング）
+  - クールダウンタイマー自動管理
+  - Clean Architecture原則準拠の依存関係制御
+
+### 🛠️ iOS ビルド最適化
+#### ⚡ Expo iOS ビルド警告解決
+- **Hermes スクリプト依存関係警告対応**
+  - `[CP-User] [Hermes] Replace Hermes for the right configuration` 警告の改善
+  - Pod install による依存関係の再構築実行
+  - ビルド成功率向上・警告ログ削減
+- **重複ライブラリ警告修正**
+  - `-lc++` 重複リンクエラーの解決
+  - リンカー最適化によるビルド安定化
+
+### 🐛 認証画面プロパティエラー修正
+#### 🔧 カスタムフック プロパティ不整合解決
+- **LoginScreen.tsx 修正**
+  - `const { form, actions, isSubmitting }` → `const { form, updateEmail, updatePassword, handleSubmit, isSubmitting }`
+  - `actions.updateEmail` → `updateEmail` の直接呼び出し
+  - `actions.updatePassword` → `updatePassword` の直接呼び出し  
+  - `actions.handleSubmit` → `handleSubmit` の直接呼び出し
+- **SignUpScreen.tsx 修正**
+  - `const { form, actions, isSubmitting }` → `const { form, updateEmail, updatePassword, updateConfirmPassword, handleSubmit, isSubmitting }`
+  - `actions.updateEmail` → `updateEmail` の直接呼び出し
+  - `actions.updatePassword` → `updatePassword` の直接呼び出し
+  - `actions.updateConfirmPassword` → `updateConfirmPassword` の直接呼び出し
+  - `actions.handleSubmit` → `handleSubmit` の直接呼び出し
+- **EmailVerificationScreen.tsx 修正**
+  - `useEmailVerificationHook` 返り値プロパティの正しいマッピング
+  - `verificationCode, errors` → `verification.errors` 構造変更対応
+  - `verifyOTPCode, resendVerificationEmail` → `verifyOTP, resendEmail` メソッド名修正
+  - `updateVerificationCode` → `updateCode` プロパティ名修正
+  - `resendCooldown` → `verification.resendCooldown` 構造変更対応
+
+#### 🎯 型安全性向上
+- **TypeScriptエラー完全解決**
+  - `Cannot read property 'updateEmail' of undefined` エラー修正
+  - `Cannot read property 'code' of undefined` エラー修正
+  - カスタムフック返り値構造とコンポーネント使用の整合性確保
+- **Clean Architecture 準拠維持**
+  - Presentation層での正しいhook使用パターン実装
+  - プロパティ構造変更に対応した適切なリファクタリング
+
+### 🚀 アプリケーション動作改善
+- **認証フロー安定化**
+  - ログイン画面での入力フィールドエラー解消
+  - サインアップ画面での入力フィールドエラー解消
+  - メール認証画面でのOTP入力・送信エラー解消
+- **iOS デバイスビルド成功**
+  - `npx expo run:ios --device iPhonama` 正常実行
+  - 警告最小化による開発体験向上
+
+### 🧪 品質保証
+- **ランタイムエラー解消**: 認証画面でのプロパティアクセスエラー完全修正
+- **ビルドプロセス最適化**: iOS ビルド警告の大幅削減
+- **型安全性確保**: TypeScript エラー完全解決
+
+---
+
 ## [3.1.0] - 2025-01-21 - 📧 メール認証フロー完全実装 & Clean Architecture更なる改善
 
 ### 📧 メール認証システム完全実装
