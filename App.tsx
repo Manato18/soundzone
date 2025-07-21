@@ -1,10 +1,11 @@
 import React from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { useFonts } from 'expo-font';
+import { QueryClientProvider } from '@tanstack/react-query';
 import 'react-native-reanimated';
 import 'react-native-gesture-handler';
 
-import { AuthProvider } from './src/features/auth/presentation/AuthContext';
+import { queryClient } from './src/shared/presenter/queries/queryClient';
 import RootNavigator from './src/navigation/RootNavigator';
 
 export default function App() {
@@ -18,9 +19,9 @@ export default function App() {
   }
 
   return (
-    <AuthProvider>
+    <QueryClientProvider client={queryClient}>
       <RootNavigator />
       <StatusBar style="auto" />
-    </AuthProvider>
+    </QueryClientProvider>
   );
 } 

@@ -1,8 +1,6 @@
-import { Email } from '../valueObjects/Email';
-
 export interface UserProps {
   id: string;
-  email: Email;
+  email: string;
   emailVerified: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -10,6 +8,15 @@ export interface UserProps {
     name?: string;
     avatarUrl?: string;
   };
+}
+
+// TanStack Query用のシンプルなユーザー型
+export interface QueryUser {
+  id: string;
+  email: string;
+  emailVerified: boolean;
+  name?: string;
+  avatarUrl?: string;
 }
 
 export class User {
@@ -32,7 +39,7 @@ export class User {
     return this.props.id;
   }
 
-  get email(): Email {
+  get email(): string {
     return this.props.email;
   }
 
@@ -90,7 +97,7 @@ export class User {
   toJSON() {
     return {
       id: this.props.id,
-      email: this.props.email.value,
+      email: this.props.email,
       emailVerified: this.props.emailVerified,
       createdAt: this.props.createdAt.toISOString(),
       updatedAt: this.props.updatedAt.toISOString(),
