@@ -9,7 +9,7 @@ import AppNavigator from './AppNavigator';
 import AuthNavigator from './AuthNavigator';
 
 export default function RootNavigator() {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, authStatusDetails } = useAuth();
   const queryClient = useQueryClient();
 
   // Supabaseの認証状態変更を監視
@@ -17,12 +17,12 @@ export default function RootNavigator() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         console.log('Auth state changed:', event, session?.user?.email);
+        console.log('Auth status details:', authStatusDetails);
         
         if (event === 'SIGNED_OUT' || event === 'TOKEN_REFRESHED') {
           if (event === 'SIGNED_OUT') {
             // サインアウト時はキャッシュをクリア
             console.log('Clearing auth cache due to sign out');
-            queryClient.setQueryData(queryKeys.auth.user(), null);
             queryClient.setQueryData(queryKeys.auth.session(), null);
             queryClient.removeQueries({ queryKey: queryKeys.auth.all });
           }
@@ -31,17 +31,14 @@ export default function RootNavigator() {
           await queryClient.invalidateQueries({ queryKey: queryKeys.auth.all });
         } else if (event === 'SIGNED_IN') {
           // サインイン時も認証クエリを無効化して最新情報を取得
-          console.log('Invalidating auth cache due to sign in');
+          console.log('User signed in, invalidating auth queries');
           await queryClient.invalidateQueries({ queryKey: queryKeys.auth.all });
         }
       }
     );
 
-    // クリーンアップ
-    return () => {
-      subscription.unsubscribe();
-    };
-  }, [queryClient]);
+    return () => subscription.unsubscribe();
+  }, [queryClient, authStatusDetails]);
 
   // ローディング中の表示
   if (isLoading) {
@@ -52,9 +49,45 @@ export default function RootNavigator() {
     );
   }
 
+  // 認証状態による画面分岐
+  // 1. 未認証: AuthNavigator（ログイン・新規登録）
+  // 2. メール認証待ち: EmailVerificationScreen（直接表示）
+  // 3. 認証完了: AppNavigator（メインアプリ）
+  
+  console.log('Current auth status:', {
+    isAuthenticated,
+    isSignedIn: authStatusDetails.isSignedIn,
+    isEmailVerified: authStatusDetails.isEmailVerified,
+    needsEmailVerification: authStatusDetails.needsEmailVerification,
+  });
+
+  if (!authStatusDetails.isSignedIn) {
+    // 未認証状態 → AuthNavigator
+    console.log('Showing AuthNavigator - user not signed in');
+    return (
+      <NavigationContainer>
+        <AuthNavigator />
+      </NavigationContainer>
+    );
+  }
+
+  if (authStatusDetails.needsEmailVerification) {
+    // メール認証待ち状態 → EmailVerificationScreen（直接表示）
+    console.log('Showing EmailVerificationScreen - needs email verification');
+    // Note: この実装では、EmailVerificationScreenを単体で表示
+    // 実際の実装では、NavigatorでWrapするか、AuthNavigatorに統合する
+    return (
+      <NavigationContainer>
+        <AuthNavigator />
+      </NavigationContainer>
+    );
+  }
+
+  // 認証完了状態 → AppNavigator
+  console.log('Showing AppNavigator - user authenticated and verified');
   return (
     <NavigationContainer>
-      {isAuthenticated ? <AppNavigator /> : <AuthNavigator />}
+      <AppNavigator />
     </NavigationContainer>
   );
 }

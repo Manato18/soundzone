@@ -1,25 +1,29 @@
 import { useCallback, useEffect } from 'react';
+import { MMKVStorage, StorageKeys } from '../../../../shared/infra/storage/mmkvStorage';
 import {
   useAuthStatus,
-  useSignInMutation,
-  useSignUpMutation,
-  useSignOutMutation,
   usePasswordResetMutation,
+  useResendVerificationEmailMutation,
+  useSignInMutation,
+  useSignOutMutation,
+  useSignUpMutation,
+  useVerifyOTPMutation,
 } from '../queries/authQueries';
 import {
-  useLoginForm,
-  useSignUpForm,
   useAuthActions,
-  useLoginFormActions,
-  useSignUpFormActions,
-  useAuthSettings,
   useAuthModals,
+  useAuthSettings,
+  useEmailVerificationActions,
+  useEmailVerificationState,
+  useLoginForm,
+  useLoginFormActions,
+  useSignUpForm,
+  useSignUpFormActions,
 } from '../stores/authStore';
-import { MMKVStorage, StorageKeys } from '../../../../shared/infra/storage/mmkvStorage';
 
 // メインの認証フック
 export const useAuth = () => {
-  const { isAuthenticated, user, isLoading, error } = useAuthStatus();
+  const { isAuthenticated, user, isLoading, error, authStatusDetails } = useAuthStatus();
   
   const signInMutation = useSignInMutation({
     onSuccess: (data) => {
@@ -54,6 +58,7 @@ export const useAuth = () => {
     user,
     isLoading: isLoading || signInMutation.isPending || signUpMutation.isPending,
     error,
+    authStatusDetails, // 詳細認証状態を追加
 
     // 認証メソッド
     signIn: async (email: string, password: string) => {
@@ -256,4 +261,147 @@ export const useAuthModalsHook = () => {
 // 最後にログインしたメールアドレスを取得
 export const useLastLoginEmail = () => {
   return MMKVStorage.getString(StorageKeys.LAST_LOGIN_EMAIL) || '';
+};
+
+// メール認証フロー統合フック
+export const useEmailVerificationHook = () => {
+  const emailVerificationState = useEmailVerificationState();
+  const emailVerificationActions = useEmailVerificationActions();
+  
+  const verifyOTPMutation = useVerifyOTPMutation();
+  const resendVerificationEmailMutation = useResendVerificationEmailMutation();
+  
+  // クールダウンタイマー管理
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+    if (emailVerificationState.resendCooldown > 0) {
+      timer = setTimeout(() => {
+        emailVerificationActions.setEmailVerificationResendCooldown(
+          emailVerificationState.resendCooldown - 1
+        );
+      }, 1000);
+    }
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
+  }, [emailVerificationState.resendCooldown, emailVerificationActions]);
+
+  // OTP検証処理
+  const verifyOTPCode = useCallback(async (email: string, code: string) => {
+    emailVerificationActions.setEmailVerificationIsVerifying(true);
+    emailVerificationActions.setEmailVerificationErrors({});
+    
+    try {
+      const result = await verifyOTPMutation.mutateAsync({
+        email,
+        token: code,
+        type: 'signup',
+      });
+      
+      if (!result.success) {
+        emailVerificationActions.setEmailVerificationErrors({
+          code: result.error || 'OTP検証に失敗しました',
+        });
+        return { success: false, error: result.error };
+      }
+      
+      // 検証成功時はエラーをクリア
+      emailVerificationActions.setEmailVerificationErrors({});
+      return { success: true };
+      
+    } catch (error) {
+      const errorMessage = error instanceof Error 
+        ? error.message 
+        : 'OTP検証中にエラーが発生しました';
+      
+      emailVerificationActions.setEmailVerificationErrors({
+        general: errorMessage,
+      });
+      
+      return { success: false, error: errorMessage };
+    } finally {
+      emailVerificationActions.setEmailVerificationIsVerifying(false);
+    }
+  }, [verifyOTPMutation, emailVerificationActions]);
+
+  // メール再送信処理
+  const resendVerificationEmail = useCallback(async (email: string) => {
+    if (emailVerificationState.resendCooldown > 0) {
+      return { success: false, error: 'まだクールダウン中です' };
+    }
+    
+    emailVerificationActions.setEmailVerificationIsResending(true);
+    emailVerificationActions.setEmailVerificationErrors({});
+    
+    try {
+      const result = await resendVerificationEmailMutation.mutateAsync({ email });
+      
+      if (!result.success) {
+        emailVerificationActions.setEmailVerificationErrors({
+          general: result.error || 'メール再送信に失敗しました',
+        });
+        return { success: false, error: result.error };
+      }
+      
+      // 再送信成功時
+      emailVerificationActions.setEmailVerificationLastSentEmail(email);
+      emailVerificationActions.setEmailVerificationResendCooldown(60); // 60秒クールダウン
+      emailVerificationActions.setEmailVerificationErrors({});
+      
+      return { success: true };
+      
+    } catch (error) {
+      const errorMessage = error instanceof Error 
+        ? error.message 
+        : 'メール再送信中にエラーが発生しました';
+      
+      emailVerificationActions.setEmailVerificationErrors({
+        general: errorMessage,
+      });
+      
+      return { success: false, error: errorMessage };
+    } finally {
+      emailVerificationActions.setEmailVerificationIsResending(false);
+    }
+  }, [
+    emailVerificationState.resendCooldown,
+    resendVerificationEmailMutation,
+    emailVerificationActions,
+  ]);
+
+  // コード更新
+  const updateVerificationCode = useCallback((code: string) => {
+    emailVerificationActions.setEmailVerificationCode(code);
+    // コード更新時はエラーをクリア
+    if (emailVerificationState.errors.code) {
+      emailVerificationActions.setEmailVerificationErrors({ code: undefined });
+    }
+  }, [emailVerificationActions, emailVerificationState.errors.code]);
+
+  // エラークリア
+  const clearErrors = useCallback(() => {
+    emailVerificationActions.setEmailVerificationErrors({});
+  }, [emailVerificationActions]);
+
+  // コードリセット
+  const resetVerificationCode = useCallback(() => {
+    emailVerificationActions.setEmailVerificationCode('');
+    emailVerificationActions.setEmailVerificationErrors({});
+  }, [emailVerificationActions]);
+
+  return {
+    // 状態
+    ...emailVerificationState,
+    
+    // ミューテーション状態
+    isVerifyingOTP: verifyOTPMutation.isPending,
+    isResendingEmail: resendVerificationEmailMutation.isPending,
+    
+    // アクション
+    verifyOTPCode,
+    resendVerificationEmail,
+    updateVerificationCode,
+    clearErrors,
+    resetVerificationCode,
+  };
 };

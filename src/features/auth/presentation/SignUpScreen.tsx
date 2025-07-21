@@ -1,3 +1,5 @@
+import { RouteProp } from '@react-navigation/native';
+import { StackNavigationProp } from '@react-navigation/stack';
 import React from 'react';
 import {
   ActivityIndicator,
@@ -8,20 +10,90 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { AuthStackParamList } from '../../../navigation/AuthNavigator';
 import { useSignUpFormHook } from '../presenter/hooks/useAuth';
+import { useSendOTPMutation } from '../presenter/queries/authQueries';
+
+// 型定義
+type SignUpScreenNavigationProp = StackNavigationProp<AuthStackParamList, 'SignUp'>;
+type SignUpScreenRouteProp = RouteProp<AuthStackParamList, 'SignUp'>;
 
 interface SignUpScreenProps {
-  navigation: {
-    navigate: (screen: string) => void;
-    goBack: () => void;
-  };
+  navigation: SignUpScreenNavigationProp;
+  route: SignUpScreenRouteProp;
 }
 
 export default function SignUpScreen({ navigation }: SignUpScreenProps) {
   const { form, actions, isSubmitting } = useSignUpFormHook();
+  const sendOTPMutation = useSendOTPMutation();
 
   const handleBackToLogin = () => {
     navigation.goBack();
+  };
+
+  // 新規登録処理（OTP送信に変更）
+  const handleSignUpWithOTP = async () => {
+    // バリデーション
+    if (!form.email.trim()) {
+      // actions.setSignUpError('email', 'メールアドレスを入力してください');
+      // 既存のバリデーションロジックをスキップして、直接処理
+    }
+    if (!form.password.trim()) {
+      // actions.setSignUpError('password', 'パスワードを入力してください');
+      return;
+    }
+    if (form.password !== form.confirmPassword) {
+      // actions.setSignUpError('confirmPassword', 'パスワードが一致しません');
+      return;
+    }
+    if (form.password.length < 8) {
+      // actions.setSignUpError('password', 'パスワードは8文字以上で入力してください');
+      return;
+    }
+
+    // actions.setSignUpSubmitting(true);
+    // actions.clearSignUpForm(); // エラーをクリア
+    
+    try {
+      // まずOTPを送信（新規登録を含む）
+      const otpResult = await sendOTPMutation.mutateAsync({
+        email: form.email,
+        shouldCreateUser: true,
+        type: 'signup',
+      });
+      
+      if (!otpResult.success) {
+        // メール認証済みユーザーの場合やその他のエラー
+        Alert.alert('登録エラー', otpResult.error || 'アカウント作成に失敗しました');
+        return;
+      }
+      
+      if (otpResult.needsEmailVerification) {
+        // メール認証が必要な場合、EmailVerificationScreenに遷移
+        console.log('Navigating to EmailVerification screen for:', form.email);
+        navigation.navigate('EmailVerification', { 
+          email: form.email 
+        });
+        
+        // フォームをクリア
+        actions.clearForm();
+      } else {
+        // 既に認証済みの場合（自動ログイン）
+        Alert.alert(
+          'アカウント作成完了', 
+          'アカウントが正常に作成されました！',
+          [{ text: 'OK' }]
+        );
+        actions.clearForm();
+      }
+      
+    } catch (error) {
+      const errorMessage = error instanceof Error 
+        ? error.message 
+        : 'アカウント作成中にエラーが発生しました';
+      Alert.alert('登録エラー', errorMessage);
+      console.error('Sign up error:', error);
+    }
   };
 
   // エラーがある場合はアラート表示（一度だけ表示するため、Refで制御）
@@ -37,7 +109,6 @@ export default function SignUpScreen({ navigation }: SignUpScreenProps) {
       shownErrorRef.current = null;
     }
   }, [form.errors.general]);
-
 
   return (
     <View style={styles.container}>
@@ -84,10 +155,10 @@ export default function SignUpScreen({ navigation }: SignUpScreenProps) {
 
         <TouchableOpacity
           style={[styles.button, styles.signUpButton]}
-          onPress={actions.handleSubmit}
-          disabled={isSubmitting}
+          onPress={handleSignUpWithOTP}
+          disabled={isSubmitting || sendOTPMutation.isPending}
         >
-          {isSubmitting ? (
+          {(isSubmitting || sendOTPMutation.isPending) ? (
             <ActivityIndicator color="white" />
           ) : (
             <Text style={styles.buttonText}>新規登録</Text>
@@ -97,12 +168,19 @@ export default function SignUpScreen({ navigation }: SignUpScreenProps) {
         <TouchableOpacity
           style={[styles.button, styles.backButton]}
           onPress={handleBackToLogin}
-          disabled={isSubmitting}
+          disabled={isSubmitting || sendOTPMutation.isPending}
         >
           <Text style={[styles.buttonText, styles.backButtonText]}>
             ログイン画面に戻る
           </Text>
         </TouchableOpacity>
+      </View>
+      
+      <View style={styles.infoSection}>
+        <Text style={styles.infoText}>
+          新規登録後、メールアドレスに認証コードが送信されます。{'\n'}
+          迷惑メールフォルダもご確認ください。
+        </Text>
       </View>
     </View>
   );
@@ -170,5 +248,17 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginBottom: 8,
     marginTop: -8,
+  },
+  infoSection: {
+    marginTop: 20,
+    padding: 15,
+    backgroundColor: '#e0e0e0',
+    borderRadius: 8,
+    alignSelf: 'stretch',
+  },
+  infoText: {
+    fontSize: 14,
+    color: '#555',
+    textAlign: 'center',
   },
 }); 

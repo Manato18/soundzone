@@ -28,6 +28,19 @@ export interface AuthUIState {
     };
   };
 
+  // メール認証状態
+  emailVerification: {
+    isResending: boolean;
+    resendCooldown: number;
+    lastSentEmail?: string;
+    verificationCode: string;
+    isVerifying: boolean;
+    errors: {
+      code?: string;
+      general?: string;
+    };
+  };
+
   // 全般UI状態
   isFirstLaunch: boolean;
   biometricEnabled: boolean;
@@ -51,6 +64,14 @@ export interface AuthUIActions {
   setSignUpError: (field: keyof AuthUIState['signUpForm']['errors'], error?: string) => void;
   clearSignUpForm: () => void;
   setSignUpSubmitting: (isSubmitting: boolean) => void;
+
+  // メール認証アクション
+  setEmailVerificationCode: (code: string) => void;
+  setEmailVerificationIsVerifying: (isVerifying: boolean) => void;
+  setEmailVerificationErrors: (errors: Partial<AuthUIState['emailVerification']['errors']>) => void;
+  setEmailVerificationIsResending: (isResending: boolean) => void;
+  setEmailVerificationResendCooldown: (cooldown: number) => void;
+  setEmailVerificationLastSentEmail: (email?: string) => void;
 
   // 設定アクション
   setBiometricEnabled: (enabled: boolean) => void;
@@ -78,6 +99,14 @@ const initialState: AuthUIState = {
     password: '',
     confirmPassword: '',
     isSubmitting: false,
+    errors: {},
+  },
+  emailVerification: {
+    isResending: false,
+    resendCooldown: 0,
+    lastSentEmail: undefined,
+    verificationCode: '',
+    isVerifying: false,
     errors: {},
   },
   isFirstLaunch: true,
@@ -170,6 +199,58 @@ export const useAuthStore = create<AuthUIState & AuthUIActions>()(
         },
       })),
 
+    // メール認証アクション
+    setEmailVerificationCode: (code: string) =>
+      set((state) => ({
+        emailVerification: {
+          ...state.emailVerification,
+          verificationCode: code,
+        },
+      })),
+
+    setEmailVerificationIsVerifying: (isVerifying: boolean) =>
+      set((state) => ({
+        emailVerification: {
+          ...state.emailVerification,
+          isVerifying,
+        },
+      })),
+
+    setEmailVerificationErrors: (errors: Partial<AuthUIState['emailVerification']['errors']>) =>
+      set((state) => ({
+        emailVerification: {
+          ...state.emailVerification,
+          errors: {
+            ...state.emailVerification.errors,
+            ...errors,
+          },
+        },
+      })),
+
+    setEmailVerificationIsResending: (isResending: boolean) =>
+      set((state) => ({
+        emailVerification: {
+          ...state.emailVerification,
+          isResending,
+        },
+      })),
+
+    setEmailVerificationResendCooldown: (cooldown: number) =>
+      set((state) => ({
+        emailVerification: {
+          ...state.emailVerification,
+          resendCooldown: cooldown,
+        },
+      })),
+
+    setEmailVerificationLastSentEmail: (email?: string) =>
+      set((state) => ({
+        emailVerification: {
+          ...state.emailVerification,
+          lastSentEmail: email,
+        },
+      })),
+
     // 設定アクション
     setBiometricEnabled: (enabled) =>
       set({ biometricEnabled: enabled }),
@@ -206,6 +287,9 @@ export const useAuthModals = () => useAuthStore((state) => ({
   showEmailVerificationModal: state.showEmailVerificationModal,
 }));
 
+// メール認証状態セレクター（再描画最適化）
+export const useEmailVerificationState = () => useAuthStore((state) => state.emailVerification);
+
 // ログインフォーム個別アクションセレクター（再描画最適化）
 export const useLoginFormActions = () => ({
   updateLoginForm: useAuthStore((state) => state.updateLoginForm),
@@ -220,6 +304,16 @@ export const useSignUpFormActions = () => ({
   setSignUpError: useAuthStore((state) => state.setSignUpError),
   clearSignUpForm: useAuthStore((state) => state.clearSignUpForm),
   setSignUpSubmitting: useAuthStore((state) => state.setSignUpSubmitting),
+});
+
+// メール認証アクションセレクター（再描画最適化）
+export const useEmailVerificationActions = () => ({
+  setEmailVerificationCode: useAuthStore((state) => state.setEmailVerificationCode),
+  setEmailVerificationIsVerifying: useAuthStore((state) => state.setEmailVerificationIsVerifying),
+  setEmailVerificationErrors: useAuthStore((state) => state.setEmailVerificationErrors),
+  setEmailVerificationIsResending: useAuthStore((state) => state.setEmailVerificationIsResending),
+  setEmailVerificationResendCooldown: useAuthStore((state) => state.setEmailVerificationResendCooldown),
+  setEmailVerificationLastSentEmail: useAuthStore((state) => state.setEmailVerificationLastSentEmail),
 });
 
 // アクションセレクター（後方互換性のため維持）
@@ -237,5 +331,11 @@ export const useAuthActions = () => useAuthStore((state) => ({
   setFirstLaunch: state.setFirstLaunch,
   setPasswordResetModal: state.setPasswordResetModal,
   setEmailVerificationModal: state.setEmailVerificationModal,
+  setEmailVerificationCode: state.setEmailVerificationCode,
+  setEmailVerificationIsVerifying: state.setEmailVerificationIsVerifying,
+  setEmailVerificationErrors: state.setEmailVerificationErrors,
+  setEmailVerificationIsResending: state.setEmailVerificationIsResending,
+  setEmailVerificationResendCooldown: state.setEmailVerificationResendCooldown,
+  setEmailVerificationLastSentEmail: state.setEmailVerificationLastSentEmail,
   resetAuthState: state.resetAuthState,
 }));

@@ -43,6 +43,48 @@ export interface QueryUser {
   avatarUrl?: string;
 }
 
+// 詳細認証状態型定義
+export interface AuthStatusDetails {
+  isSignedIn: boolean;
+  isEmailVerified: boolean;
+  needsEmailVerification: boolean;
+  user?: QueryUser;
+}
+
+// OTP認証関連の型定義
+export interface VerifyOTPRequest {
+  email: string;
+  token: string;
+  type: 'signup' | 'email' | 'recovery';
+}
+
+export interface VerifyOTPResponse {
+  success: boolean;
+  user?: QueryUser;
+  error?: string;
+}
+
+export interface SendOTPRequest {
+  email: string;
+  shouldCreateUser?: boolean;
+  type?: 'signup' | 'magiclink';
+}
+
+export interface SendOTPResponse {
+  success: boolean;
+  needsEmailVerification: boolean;
+  error?: string;
+}
+
+export interface ResendVerificationEmailRequest {
+  email: string;
+}
+
+export interface ResendVerificationEmailResponse {
+  success: boolean;
+  error?: string;
+}
+
 // 現在のユーザー情報を取得するクエリ
 export const useCurrentUserQuery = (
   options?: Omit<UseQueryOptions<QueryUser | null, Error>, 'queryKey' | 'queryFn'>
@@ -304,15 +346,163 @@ export const usePasswordResetMutation = (
   });
 };
 
-// 認証状態チェックのヘルパー
+// OTPコード検証ミューテーション
+export const useVerifyOTPMutation = (
+  options?: Omit<UseMutationOptions<VerifyOTPResponse, Error, VerifyOTPRequest>, 'mutationFn'>
+) => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ email, token, type }: VerifyOTPRequest): Promise<VerifyOTPResponse> => {
+      try {
+        const { data, error } = await supabase.auth.verifyOtp({
+          email,
+          token,
+          type,
+        });
+
+        if (error) {
+          return {
+            success: false,
+            error: error.message,
+          };
+        }
+
+        if (data.user) {
+          const user = {
+            id: data.user.id,
+            email: data.user.email || '',
+            emailVerified: data.user.email_confirmed_at !== null,
+            name: data.user.user_metadata?.name,
+            avatarUrl: data.user.user_metadata?.avatar_url,
+          };
+
+          return {
+            success: true,
+            user,
+          };
+        }
+
+        return {
+          success: false,
+          error: 'OTP検証に失敗しました',
+        };
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'OTP検証中にエラーが発生しました',
+        };
+      }
+    },
+    onSuccess: (data) => {
+      if (data.success && data.user) {
+        // 検証成功時にキャッシュを更新
+        queryClient.setQueryData(queryKeys.auth.user(), data.user);
+        queryClient.invalidateQueries({ queryKey: queryKeys.auth.session() });
+      }
+    },
+    onError: (error) => {
+      console.error('Verify OTP error:', error);
+    },
+    ...options,
+  });
+};
+
+// OTPコード送信ミューテーション（signup用）
+export const useSendOTPMutation = (
+  options?: Omit<UseMutationOptions<SendOTPResponse, Error, SendOTPRequest>, 'mutationFn'>
+) => {
+  return useMutation({
+    mutationFn: async ({ email, shouldCreateUser = true, type = 'signup' }: SendOTPRequest): Promise<SendOTPResponse> => {
+      try {
+        const { data, error } = await supabase.auth.signInWithOtp({
+          email,
+          options: {
+            shouldCreateUser,
+          },
+        });
+
+        if (error) {
+          return {
+            success: false,
+            needsEmailVerification: false,
+            error: error.message,
+          };
+        }
+
+        return {
+          success: true,
+          needsEmailVerification: !data.session, // セッションがない場合はメール認証が必要
+        };
+      } catch (error) {
+        return {
+          success: false,
+          needsEmailVerification: false,
+          error: error instanceof Error ? error.message : 'OTP送信中にエラーが発生しました',
+        };
+      }
+    },
+    onError: (error) => {
+      console.error('Send OTP error:', error);
+    },
+    ...options,
+  });
+};
+
+// メール認証再送信ミューテーション
+export const useResendVerificationEmailMutation = (
+  options?: Omit<UseMutationOptions<ResendVerificationEmailResponse, Error, ResendVerificationEmailRequest>, 'mutationFn'>
+) => {
+  return useMutation({
+    mutationFn: async ({ email }: ResendVerificationEmailRequest): Promise<ResendVerificationEmailResponse> => {
+      try {
+        const { error } = await supabase.auth.resend({
+          type: 'signup',
+          email,
+        });
+
+        if (error) {
+          return {
+            success: false,
+            error: error.message,
+          };
+        }
+
+        return {
+          success: true,
+        };
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'メール再送信中にエラーが発生しました',
+        };
+      }
+    },
+    onError: (error) => {
+      console.error('Resend verification email error:', error);
+    },
+    ...options,
+  });
+};
+
+// 認証状態チェックのヘルパー（詳細化）
 export const useAuthStatus = () => {
   const { data: user, isLoading: isUserLoading, error } = useCurrentUserQuery();
+  
+  const authStatusDetails: AuthStatusDetails = {
+    isSignedIn: !!user,
+    isEmailVerified: user?.emailVerified ?? false,
+    needsEmailVerification: !!user && !user.emailVerified,
+    user: user || undefined,
+  };
   
   return {
     isAuthenticated: !!user,
     user,
     isLoading: isUserLoading,
     error: error ? handleQueryError(error) : null,
+    // 詳細認証状態
+    authStatusDetails,
   };
 };
 

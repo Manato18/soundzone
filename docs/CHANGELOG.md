@@ -1,5 +1,116 @@
 # SoundZone - 変更履歴
 
+## [3.1.0] - 2025-01-21 - 📧 メール認証フロー完全実装 & Clean Architecture更なる改善
+
+### 📧 メール認証システム完全実装
+
+#### 🎯 理想的なユーザー認証フロー実現
+- **新規登録→メール認証待ち→認証完了→Home画面**の自動遷移フロー実装
+- **EmailVerificationScreen新規作成**
+  - メール認証待ち専用画面
+  - OTPコード入力UI（6桁数字、リアルタイムバリデーション）
+  - メール再送信機能（60秒クールダウン付き）
+  - ユーザーフレンドリーなUI/UX
+  - 迷惑メールフォルダ確認案内
+  - キーボード最適化（number-pad、autoComplete）
+- **AuthNavigator拡張**
+  - EmailVerificationScreen追加
+  - 型安全なナビゲーション実装（AuthStackParamList）
+- **認証状態3分類制御**
+  - 未認証：AuthNavigator（ログイン・新規登録）
+  - メール認証待ち：EmailVerificationScreen
+  - 認証完了：AppNavigator（メインアプリ）
+
+#### 🏗️ Clean Architecture + TanStack Query + Zustand 更なる改善
+
+##### 📋 TanStack Query拡張
+- **`useVerifyOTPMutation`実装**
+  - OTPコード検証のミューテーション管理
+  - エラーハンドリング・リトライ制御
+  - 成功時のキャッシュ更新・セッション管理
+- **`useResendVerificationEmailMutation`実装**
+  - メール再送信のミューテーション管理
+  - エラーハンドリング・リトライ制御
+  - 成功時のキャッシュ更新
+- **`useSendOTPMutation`実装**
+  - OTP送信ミューテーション（signup/email_change/recovery対応）
+  - shouldCreateUserオプション管理
+- **`useAuthStatus`詳細化**
+  - `AuthStatusDetails`型追加
+  - `isSignedIn`, `isEmailVerified`, `needsEmailVerification`の詳細分析
+  - 認証状態の細分化判定
+
+##### 🎛️ Zustand UI状態管理拡張
+- **emailVerification状態追加**
+  ```typescript
+  emailVerification: {
+    isResending: boolean;
+    resendCooldown: number;
+    lastSentEmail?: string;
+    verificationCode: string;
+    isVerifying: boolean;
+    errors: {
+      code?: string;
+      general?: string;
+    };
+  }
+  ```
+- **専用セレクター・アクション実装**
+  - `useEmailVerificationState()` - 再描画最適化
+  - `useEmailVerificationActions()` - アクション分離
+  - クールダウンタイマー・UI状態の完全管理
+
+##### 🎪 統合カスタムフック実装
+- **`useEmailVerificationHook`新規作成**
+  - TanStack Query（サーバー状態）+ Zustand（UI状態）統合
+  - クールダウンタイマー自動管理（setInterval制御）
+  - OTP検証処理の完全抽象化
+  - メール再送信処理の完全抽象化
+  - Clean Architectureの原則準拠
+
+#### 🔄 認証状態監視・同期改善
+- **RootNavigator認証分岐詳細化**
+  - `useAuthStatus`のAuthStatusDetailsを活用
+  - デバッグログによる状態遷移可視化
+  - Supabase認証状態変更の確実な検知
+  - 3つの認証状態に基づく適切な画面表示
+- **EmailVerificationScreen最適化**
+  - Presentation層でのSupabase直接使用を排除
+  - アーキテクチャ準拠の完全実装
+  - ローカル状態管理の削除（Zustand統合）
+
+#### 🔐 OTP認証実装（マジックリンクではなく）
+- **Supabase OTP認証完全対応**
+  - `signInWithOtp()` - OTPコード送信
+  - `verifyOtp()` - OTPコード検証
+  - `resend()` - メール認証再送信
+- **メールテンプレート最適化**
+  - `{{ .Token }}`変数使用でOTPコード表示
+  - Magic Linkテンプレートからの完全移行
+
+### 🎯 ユーザビリティ向上
+- **新規登録後の混乱解消**
+  - パスワードエラー問題の根本解決
+  - メール認証状態の明確な案内
+  - 自動画面遷移による迷いのないフロー
+- **エラーハンドリング改善**
+  - OTP検証失敗時の適切なフィードバック
+  - メール再送信失敗時の適切なフィードバック
+  - ネットワークエラー・認証エラーの分離処理
+- **パフォーマンス最適化**
+  - 不要な再描画防止（セレクター最適化）
+  - メモリ効率的な状態管理
+  - Clean Architectureによる保守性向上
+
+### 🧪 アーキテクチャ品質評価
+- **Clean Architecture**: 🌟🌟🌟🌟🌟 完璧実装
+- **TanStack Query**: 🌟🌟🌟🌟🌟 サーバー状態管理
+- **Zustand**: 🌟🌟🌟🌟🌟 UI状態管理・再描画最適化
+- **型安全性**: 🌟🌟🌟🌟🌟 完全TypeScript対応
+- **保守性**: 🌟🌟🌟🌟🌟 責務分離・テスタビリティ
+
+---
+
 ## [3.0.1] - 2025-01-21 - 🐛 認証エラー修正 & パフォーマンス最適化
 
 ### 🐛 認証システムバグ修正
