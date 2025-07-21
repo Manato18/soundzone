@@ -13,6 +13,7 @@ import {
     SupabaseSession,
     SupabaseUser
 } from '../dataSources/SupabaseAuthDataSource';
+import { AuthStorage, StoredSession } from '../../infra/storage/authStorage';
 
 export class SupabaseAuthRepository implements AuthRepository {
   constructor(private readonly dataSource: SupabaseAuthDataSource) {}
@@ -26,6 +27,18 @@ export class SupabaseAuthRepository implements AuthRepository {
 
     const user = this.mapSupabaseUserToUser(response.user);
     const session = response.session ? this.mapSupabaseSessionToAuthSession(response.session, user) : undefined;
+
+    // セッションをMMKVに保存
+    if (session) {
+      const storedSession: StoredSession = {
+        accessToken: session.accessToken,
+        refreshToken: session.refreshToken,
+        expiresIn: session.expiresIn,
+        expiresAt: Date.now() + (session.expiresIn * 1000),
+        user: AuthStorage.userToStoredUser(user),
+      };
+      AuthStorage.saveSession(storedSession);
+    }
 
     return {
       user,
@@ -44,6 +57,16 @@ export class SupabaseAuthRepository implements AuthRepository {
     const user = this.mapSupabaseUserToUser(response.user);
     const session = this.mapSupabaseSessionToAuthSession(response.session, user);
 
+    // セッションをMMKVに保存
+    const storedSession: StoredSession = {
+      accessToken: session.accessToken,
+      refreshToken: session.refreshToken,
+      expiresIn: session.expiresIn,
+      expiresAt: Date.now() + (session.expiresIn * 1000),
+      user: AuthStorage.userToStoredUser(user),
+    };
+    AuthStorage.saveSession(storedSession);
+
     return {
       user,
       session,
@@ -52,9 +75,25 @@ export class SupabaseAuthRepository implements AuthRepository {
 
   async signOut(): Promise<void> {
     await this.dataSource.signOut();
+    // MMKVからセッション情報をクリア
+    AuthStorage.clearSession();
   }
 
   async getCurrentSession(): Promise<AuthSession | null> {
+    // まずMMKVから取得を試行
+    const storedSession = AuthStorage.getSession();
+    
+    if (storedSession) {
+      const user = AuthStorage.storedUserToUser(storedSession.user);
+      return {
+        accessToken: storedSession.accessToken,
+        refreshToken: storedSession.refreshToken,
+        expiresIn: storedSession.expiresIn,
+        user,
+      };
+    }
+
+    // MMKVにない場合は Supabase から取得
     const session = await this.dataSource.getCurrentSession();
     
     if (!session) {
@@ -62,23 +101,75 @@ export class SupabaseAuthRepository implements AuthRepository {
     }
 
     const user = this.mapSupabaseUserToUser(session.user);
-    return this.mapSupabaseSessionToAuthSession(session, user);
+    const authSession = this.mapSupabaseSessionToAuthSession(session, user);
+    
+    // 取得したセッションをMMKVに保存
+    const storedSessionForSave: StoredSession = {
+      accessToken: authSession.accessToken,
+      refreshToken: authSession.refreshToken,
+      expiresIn: authSession.expiresIn,
+      expiresAt: Date.now() + (authSession.expiresIn * 1000),
+      user: AuthStorage.userToStoredUser(user),
+    };
+    AuthStorage.saveSession(storedSessionForSave);
+    
+    return authSession;
   }
 
   async getCurrentUser(): Promise<User | null> {
-    const supabaseUser = await this.dataSource.getCurrentUser();
+    // まずMMKVから取得を試行
+    const storedUser = AuthStorage.getUser();
     
-    if (!supabaseUser) {
-      return null;
+    if (storedUser) {
+      // ストレージにユーザー情報があってもセッションが有効かチェック
+      if (AuthStorage.isSessionValid()) {
+        return AuthStorage.storedUserToUser(storedUser);
+      } else {
+        // セッションが無効な場合はストレージをクリア
+        AuthStorage.clearSession();
+      }
     }
 
-    return this.mapSupabaseUserToUser(supabaseUser);
+    try {
+      // MMKVにない場合またはセッション無効の場合は Supabase から取得
+      const supabaseUser = await this.dataSource.getCurrentUser();
+      
+      if (!supabaseUser) {
+        return null;
+      }
+
+      const user = this.mapSupabaseUserToUser(supabaseUser);
+      
+      // ユーザー情報をMMKVに保存
+      AuthStorage.updateUser(AuthStorage.userToStoredUser(user));
+      
+      return user;
+    } catch (error) {
+      // セッション関連エラーの場合は認証されていない状態として扱う
+      if (error instanceof Error && error.message.includes('session')) {
+        AuthStorage.clearSession();
+        return null;
+      }
+      throw error;
+    }
   }
 
   async refreshSession(): Promise<AuthSession> {
     const session = await this.dataSource.refreshSession();
     const user = this.mapSupabaseUserToUser(session.user);
-    return this.mapSupabaseSessionToAuthSession(session, user);
+    const authSession = this.mapSupabaseSessionToAuthSession(session, user);
+    
+    // リフレッシュされたセッションをMMKVに保存
+    const storedSession: StoredSession = {
+      accessToken: authSession.accessToken,
+      refreshToken: authSession.refreshToken,
+      expiresIn: authSession.expiresIn,
+      expiresAt: Date.now() + (authSession.expiresIn * 1000),
+      user: AuthStorage.userToStoredUser(user),
+    };
+    AuthStorage.saveSession(storedSession);
+    
+    return authSession;
   }
 
   async verifyEmail(token: string): Promise<User> {

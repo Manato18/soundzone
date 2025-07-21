@@ -6,7 +6,6 @@ import { Password } from '../../domain/valueObjects/Password';
 export interface SignUpRequest {
   email: string;
   password: string;
-  confirmPassword: string;
 }
 
 export interface SignUpResponse {
@@ -57,15 +56,6 @@ export class SignUpUseCase {
     }
 
     if (!request.password?.trim()) {
-      throw new WeakPasswordError();
-    }
-
-    if (!request.confirmPassword?.trim()) {
-      throw new WeakPasswordError();
-    }
-
-    // パスワード確認
-    if (request.password !== request.confirmPassword) {
       throw new WeakPasswordError();
     }
   }

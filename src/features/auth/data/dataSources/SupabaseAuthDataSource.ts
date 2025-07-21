@@ -124,9 +124,27 @@ export class SupabaseAuthDataSource {
 
   async getCurrentUser(): Promise<SupabaseUser | null> {
     try {
+      // まずセッションをチェック
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      
+      // セッションがない場合はnullを返す（エラーではない）
+      if (!session) {
+        return null;
+      }
+      
+      if (sessionError) {
+        console.error('❌ [SupabaseAuth] getCurrentUser セッションエラー:', sessionError);
+        throw new Error(sessionError.message);
+      }
+
+      // セッションがある場合のみユーザー情報を取得
       const { data: { user }, error } = await supabase.auth.getUser();
 
       if (error) {
+        // AuthSessionMissingError の場合は単純にnullを返す
+        if (error.message.includes('Auth session missing')) {
+          return null;
+        }
         console.error('❌ [SupabaseAuth] getCurrentUser エラー:', error);
         throw new Error(error.message);
       }
@@ -134,6 +152,10 @@ export class SupabaseAuthDataSource {
       return user as SupabaseUser;
 
     } catch (error) {
+      // AuthSessionMissingError の場合は単純にnullを返す
+      if (error instanceof Error && error.message.includes('Auth session missing')) {
+        return null;
+      }
       console.error('❌ [SupabaseAuth] getCurrentUser キャッチエラー:', error);
       throw new NetworkError();
     }

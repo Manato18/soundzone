@@ -1,9 +1,9 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { useAuth } from '../../auth/presentation/AuthContext';
+import { useAuth } from '../../auth/presenter/hooks/useAuth';
 
 export default function AccountScreen() {
-  const { signOut, session } = useAuth();
+  const { signOut, user } = useAuth();
 
   const handleSignOut = async () => {
     await signOut();
@@ -12,8 +12,8 @@ export default function AccountScreen() {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>アカウント画面</Text>
-      {session?.user && (
-        <Text style={styles.email}>ログイン中: {session.user.email}</Text>
+      {user && (
+        <Text style={styles.email}>ログイン中: {user.email}</Text>
       )}
       
       <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>

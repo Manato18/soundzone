@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -8,7 +8,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { useAuth } from './AuthContext';
+import { useSignUpFormHook } from '../presenter/hooks/useAuth';
 
 interface SignUpScreenProps {
   navigation: {
@@ -18,42 +18,26 @@ interface SignUpScreenProps {
 }
 
 export default function SignUpScreen({ navigation }: SignUpScreenProps) {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const { signUp, isLoading } = useAuth();
-
-  const handleSignUp = async () => {
-    if (!email || !password || !confirmPassword) {
-      Alert.alert('エラー', 'すべての項目を入力してください');
-      return;
-    }
-
-    if (password !== confirmPassword) {
-      Alert.alert('エラー', 'パスワードが一致しません');
-      return;
-    }
-
-    if (password.length < 6) {
-      Alert.alert('エラー', 'パスワードは6文字以上である必要があります');
-      return;
-    }
-
-    const { error } = await signUp(email, password);
-    if (error) {
-      Alert.alert('登録エラー', error.message);
-    } else {
-      Alert.alert(
-        '登録完了',
-        'メールを確認して認証を行ってください',
-        [{ text: 'OK', onPress: () => navigation.goBack() }]
-      );
-    }
-  };
+  const { form, actions, isSubmitting } = useSignUpFormHook();
 
   const handleBackToLogin = () => {
     navigation.goBack();
   };
+
+  // エラーがある場合はアラート表示（一度だけ表示するため、Refで制御）
+  const shownErrorRef = React.useRef<string | null>(null);
+  
+  React.useEffect(() => {
+    if (form.errors.general && form.errors.general !== shownErrorRef.current) {
+      shownErrorRef.current = form.errors.general;
+      Alert.alert('登録エラー', form.errors.general);
+    }
+    // エラーがクリアされた場合はRefもクリア
+    if (!form.errors.general) {
+      shownErrorRef.current = null;
+    }
+  }, [form.errors.general]);
+
 
   return (
     <View style={styles.container}>
@@ -62,39 +46,48 @@ export default function SignUpScreen({ navigation }: SignUpScreenProps) {
 
       <View style={styles.form}>
         <TextInput
-          style={styles.input}
+          style={[styles.input, form.errors.email && styles.inputError]}
           placeholder="メールアドレス"
-          value={email}
-          onChangeText={setEmail}
+          value={form.email}
+          onChangeText={actions.updateEmail}
           keyboardType="email-address"
           autoCapitalize="none"
-          editable={!isLoading}
+          editable={!isSubmitting}
         />
+        {form.errors.email && (
+          <Text style={styles.errorText}>{form.errors.email}</Text>
+        )}
 
         <TextInput
-          style={styles.input}
-          placeholder="パスワード (6文字以上)"
-          value={password}
-          onChangeText={setPassword}
+          style={[styles.input, form.errors.password && styles.inputError]}
+          placeholder="パスワード (8文字以上)"
+          value={form.password}
+          onChangeText={actions.updatePassword}
           secureTextEntry
-          editable={!isLoading}
+          editable={!isSubmitting}
         />
+        {form.errors.password && (
+          <Text style={styles.errorText}>{form.errors.password}</Text>
+        )}
 
         <TextInput
-          style={styles.input}
+          style={[styles.input, form.errors.confirmPassword && styles.inputError]}
           placeholder="パスワード確認"
-          value={confirmPassword}
-          onChangeText={setConfirmPassword}
+          value={form.confirmPassword}
+          onChangeText={actions.updateConfirmPassword}
           secureTextEntry
-          editable={!isLoading}
+          editable={!isSubmitting}
         />
+        {form.errors.confirmPassword && (
+          <Text style={styles.errorText}>{form.errors.confirmPassword}</Text>
+        )}
 
         <TouchableOpacity
           style={[styles.button, styles.signUpButton]}
-          onPress={handleSignUp}
-          disabled={isLoading}
+          onPress={actions.handleSubmit}
+          disabled={isSubmitting}
         >
-          {isLoading ? (
+          {isSubmitting ? (
             <ActivityIndicator color="white" />
           ) : (
             <Text style={styles.buttonText}>新規登録</Text>
@@ -104,7 +97,7 @@ export default function SignUpScreen({ navigation }: SignUpScreenProps) {
         <TouchableOpacity
           style={[styles.button, styles.backButton]}
           onPress={handleBackToLogin}
-          disabled={isLoading}
+          disabled={isSubmitting}
         >
           <Text style={[styles.buttonText, styles.backButtonText]}>
             ログイン画面に戻る
@@ -168,5 +161,14 @@ const styles = StyleSheet.create({
   },
   backButtonText: {
     color: '#007AFF',
+  },
+  inputError: {
+    borderColor: '#ff4444',
+  },
+  errorText: {
+    color: '#ff4444',
+    fontSize: 14,
+    marginBottom: 8,
+    marginTop: -8,
   },
 }); 

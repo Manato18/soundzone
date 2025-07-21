@@ -45,6 +45,18 @@ export class GetCurrentUserUseCase {
   }
 
   private handleError(error: unknown): CurrentUserResponse {
+    // NetworkError以外の通常エラーは認証されていない状態として扱う
+    if (error instanceof Error) {
+      // セッションがない場合は認証されていない状態として扱う
+      if (error.message.includes('Auth session missing') || 
+          error.message.includes('session missing')) {
+        return {
+          success: true,
+          isAuthenticated: false,
+        };
+      }
+    }
+    
     console.error('GetCurrentUserUseCase error:', error);
     
     return {

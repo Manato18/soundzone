@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -8,7 +8,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { useAuth } from './AuthContext';
+import { useLoginFormHook } from '../presenter/hooks/useAuth';
 
 interface LoginScreenProps {
   navigation: {
@@ -17,25 +17,25 @@ interface LoginScreenProps {
 }
 
 export default function LoginScreen({ navigation }: LoginScreenProps) {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const { signIn, isLoading } = useAuth();
-
-  const handleLogin = async () => {
-    if (!email || !password) {
-      Alert.alert('エラー', 'メールアドレスとパスワードを入力してください');
-      return;
-    }
-
-    const { error } = await signIn(email, password);
-    if (error) {
-      Alert.alert('ログインエラー', error.message);
-    }
-  };
+  const { form, actions, isSubmitting } = useLoginFormHook();
 
   const handleSignUp = () => {
     navigation.navigate('SignUp');
   };
+
+  // エラーがある場合はアラート表示（一度だけ表示するため、Refで制御）
+  const shownErrorRef = React.useRef<string | null>(null);
+  
+  React.useEffect(() => {
+    if (form.errors.general && form.errors.general !== shownErrorRef.current) {
+      shownErrorRef.current = form.errors.general;
+      Alert.alert('ログインエラー', form.errors.general);
+    }
+    // エラーがクリアされた場合はRefもクリア
+    if (!form.errors.general) {
+      shownErrorRef.current = null;
+    }
+  }, [form.errors.general]);
 
   return (
     <View style={styles.container}>
@@ -44,30 +44,36 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
 
       <View style={styles.form}>
         <TextInput
-          style={styles.input}
+          style={[styles.input, form.errors.email && styles.inputError]}
           placeholder="メールアドレス"
-          value={email}
-          onChangeText={setEmail}
+          value={form.email}
+          onChangeText={actions.updateEmail}
           keyboardType="email-address"
           autoCapitalize="none"
-          editable={!isLoading}
+          editable={!isSubmitting}
         />
+        {form.errors.email && (
+          <Text style={styles.errorText}>{form.errors.email}</Text>
+        )}
 
         <TextInput
-          style={styles.input}
+          style={[styles.input, form.errors.password && styles.inputError]}
           placeholder="パスワード"
-          value={password}
-          onChangeText={setPassword}
+          value={form.password}
+          onChangeText={actions.updatePassword}
           secureTextEntry
-          editable={!isLoading}
+          editable={!isSubmitting}
         />
+        {form.errors.password && (
+          <Text style={styles.errorText}>{form.errors.password}</Text>
+        )}
 
         <TouchableOpacity
           style={[styles.button, styles.loginButton]}
-          onPress={handleLogin}
-          disabled={isLoading}
+          onPress={actions.handleSubmit}
+          disabled={isSubmitting}
         >
-          {isLoading ? (
+          {isSubmitting ? (
             <ActivityIndicator color="white" />
           ) : (
             <Text style={styles.buttonText}>ログイン</Text>
@@ -77,7 +83,7 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
         <TouchableOpacity
           style={[styles.button, styles.signUpButton]}
           onPress={handleSignUp}
-          disabled={isLoading}
+          disabled={isSubmitting}
         >
           <Text style={[styles.buttonText, styles.signUpButtonText]}>
             新規登録
@@ -141,5 +147,14 @@ const styles = StyleSheet.create({
   },
   signUpButtonText: {
     color: '#007AFF',
+  },
+  inputError: {
+    borderColor: '#ff4444',
+  },
+  errorText: {
+    color: '#ff4444',
+    fontSize: 14,
+    marginBottom: 8,
+    marginTop: -8,
   },
 }); 

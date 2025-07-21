@@ -1,12 +1,12 @@
 import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { ActivityIndicator, View, StyleSheet } from 'react-native';
-import { useAuth } from '../features/auth/presentation/AuthContext';
+import { useAuth } from '../features/auth/presenter/hooks/useAuth';
 import AuthNavigator from './AuthNavigator';
 import AppNavigator from './AppNavigator';
 
 export default function RootNavigator() {
-  const { session, isLoading } = useAuth();
+  const { isAuthenticated, isLoading } = useAuth();
 
   // ローディング中の表示
   if (isLoading) {
@@ -19,7 +19,7 @@ export default function RootNavigator() {
 
   return (
     <NavigationContainer>
-      {session ? <AppNavigator /> : <AuthNavigator />}
+      {isAuthenticated ? <AppNavigator /> : <AuthNavigator />}
     </NavigationContainer>
   );
 }

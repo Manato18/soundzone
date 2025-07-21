@@ -46,4 +46,21 @@ export class AuthContainer {
   public getAuthRepository(): AuthRepository {
     return this.authRepository;
   }
+
+  // UseCaseのゲッター
+  public getSignUpUseCase(): SignUpUseCase {
+    return this.signUpUseCase;
+  }
+
+  public getSignInUseCase(): SignInUseCase {
+    return this.signInUseCase;
+  }
+
+  public getSignOutUseCase(): SignOutUseCase {
+    return this.signOutUseCase;
+  }
+
+  public getGetCurrentUserUseCase(): GetCurrentUserUseCase {
+    return this.getCurrentUserUseCase;
+  }
 } 
