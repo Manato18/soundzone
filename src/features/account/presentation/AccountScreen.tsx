@@ -1,6 +1,6 @@
 import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { useAuth } from '../../auth/presenter/hooks/useAuth';
+import { useAuth } from '../../auth/presentation/hooks/use-auth';
 
 export default function AccountScreen() {
   const { signOut, user } = useAuth();

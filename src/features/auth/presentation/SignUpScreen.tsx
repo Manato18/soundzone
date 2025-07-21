@@ -11,8 +11,7 @@ import {
   View,
 } from 'react-native';
 import { AuthStackParamList } from '../../../navigation/AuthNavigator';
-import { useSignUpFormHook } from '../presenter/hooks/useAuth';
-import { useSendOTPMutation } from '../presenter/queries/authQueries';
+import { useAuth, useSignUpFormHook } from './hooks/use-auth';
 
 // 型定義
 type SignUpScreenNavigationProp = StackNavigationProp<AuthStackParamList, 'SignUp'>;
@@ -24,59 +23,37 @@ interface SignUpScreenProps {
 }
 
 export default function SignUpScreen({ navigation }: SignUpScreenProps) {
-  const { form, actions, isSubmitting } = useSignUpFormHook();
-  const sendOTPMutation = useSendOTPMutation();
+  const { form, updateEmail, updatePassword, updateConfirmPassword, handleSubmit, isSubmitting } = useSignUpFormHook();
+  const { signOut } = useAuth();
 
   const handleBackToLogin = () => {
     navigation.goBack();
   };
 
-  // 新規登録処理（OTP送信に変更）
-  const handleSignUpWithOTP = async () => {
-    // バリデーション
-    if (!form.email.trim()) {
-      // actions.setSignUpError('email', 'メールアドレスを入力してください');
-      // 既存のバリデーションロジックをスキップして、直接処理
-    }
-    if (!form.password.trim()) {
-      // actions.setSignUpError('password', 'パスワードを入力してください');
-      return;
-    }
-    if (form.password !== form.confirmPassword) {
-      // actions.setSignUpError('confirmPassword', 'パスワードが一致しません');
-      return;
-    }
-    if (form.password.length < 8) {
-      // actions.setSignUpError('password', 'パスワードは8文字以上で入力してください');
-      return;
-    }
-
-    // actions.setSignUpSubmitting(true);
-    // actions.clearSignUpForm(); // エラーをクリア
-    
+  // 新規登録処理（実際のアカウント作成）
+  const handleSignUp = async () => {
+    // 新規登録開始前に既存セッションをクリア（安全なタイミング）
     try {
-      // まずOTPを送信（新規登録を含む）
-      const otpResult = await sendOTPMutation.mutateAsync({
-        email: form.email,
-        shouldCreateUser: true,
-        type: 'signup',
-      });
+      await signOut();
+      console.log('Cleared existing session before new sign up');
       
-      if (!otpResult.success) {
-        // メール認証済みユーザーの場合やその他のエラー
-        Alert.alert('登録エラー', otpResult.error || 'アカウント作成に失敗しました');
-        return;
-      }
+      // セッションクリア完了後にサインアップ処理を実行
+      await new Promise(resolve => setTimeout(resolve, 300)); // 安定化のため少し待機
       
-      if (otpResult.needsEmailVerification) {
+    } catch (error) {
+      // エラーは無視（既にサインアウト済みの場合）
+      console.log('No existing session to clear');
+    }
+    
+    const result = await handleSubmit();
+    
+    if (result && result.success) {
+      if (result.needsEmailVerification) {
         // メール認証が必要な場合、EmailVerificationScreenに遷移
-        console.log('Navigating to EmailVerification screen for:', form.email);
+        console.log('Navigating to EmailVerification screen for:', result.email);
         navigation.navigate('EmailVerification', { 
-          email: form.email 
+          email: result.email 
         });
-        
-        // フォームをクリア
-        actions.clearForm();
       } else {
         // 既に認証済みの場合（自動ログイン）
         Alert.alert(
@@ -84,15 +61,7 @@ export default function SignUpScreen({ navigation }: SignUpScreenProps) {
           'アカウントが正常に作成されました！',
           [{ text: 'OK' }]
         );
-        actions.clearForm();
       }
-      
-    } catch (error) {
-      const errorMessage = error instanceof Error 
-        ? error.message 
-        : 'アカウント作成中にエラーが発生しました';
-      Alert.alert('登録エラー', errorMessage);
-      console.error('Sign up error:', error);
     }
   };
 
@@ -120,7 +89,7 @@ export default function SignUpScreen({ navigation }: SignUpScreenProps) {
           style={[styles.input, form.errors.email && styles.inputError]}
           placeholder="メールアドレス"
           value={form.email}
-          onChangeText={actions.updateEmail}
+          onChangeText={updateEmail}
           keyboardType="email-address"
           autoCapitalize="none"
           editable={!isSubmitting}
@@ -133,7 +102,7 @@ export default function SignUpScreen({ navigation }: SignUpScreenProps) {
           style={[styles.input, form.errors.password && styles.inputError]}
           placeholder="パスワード (8文字以上)"
           value={form.password}
-          onChangeText={actions.updatePassword}
+          onChangeText={updatePassword}
           secureTextEntry
           editable={!isSubmitting}
         />
@@ -145,7 +114,7 @@ export default function SignUpScreen({ navigation }: SignUpScreenProps) {
           style={[styles.input, form.errors.confirmPassword && styles.inputError]}
           placeholder="パスワード確認"
           value={form.confirmPassword}
-          onChangeText={actions.updateConfirmPassword}
+          onChangeText={updateConfirmPassword}
           secureTextEntry
           editable={!isSubmitting}
         />
@@ -155,10 +124,10 @@ export default function SignUpScreen({ navigation }: SignUpScreenProps) {
 
         <TouchableOpacity
           style={[styles.button, styles.signUpButton]}
-          onPress={handleSignUpWithOTP}
-          disabled={isSubmitting || sendOTPMutation.isPending}
+          onPress={handleSignUp}
+          disabled={isSubmitting}
         >
-          {(isSubmitting || sendOTPMutation.isPending) ? (
+          {isSubmitting ? (
             <ActivityIndicator color="white" />
           ) : (
             <Text style={styles.buttonText}>新規登録</Text>
@@ -168,7 +137,7 @@ export default function SignUpScreen({ navigation }: SignUpScreenProps) {
         <TouchableOpacity
           style={[styles.button, styles.backButton]}
           onPress={handleBackToLogin}
-          disabled={isSubmitting || sendOTPMutation.isPending}
+          disabled={isSubmitting}
         >
           <Text style={[styles.buttonText, styles.backButtonText]}>
             ログイン画面に戻る

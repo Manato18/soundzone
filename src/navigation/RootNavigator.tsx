@@ -2,14 +2,14 @@ import { NavigationContainer } from '@react-navigation/native';
 import { useQueryClient } from '@tanstack/react-query';
 import React, { useEffect } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
-import { useAuth } from '../features/auth/presenter/hooks/useAuth';
+import { useAuth } from '../features/auth/presentation/hooks/use-auth';
 import { queryKeys } from '../shared/presenter/queries/queryClient';
 import { supabase } from '../shared/services/supabase';
 import AppNavigator from './AppNavigator';
 import AuthNavigator from './AuthNavigator';
 
 export default function RootNavigator() {
-  const { isAuthenticated, isLoading, authStatusDetails } = useAuth();
+  const { isAuthenticated, isLoading, user } = useAuth();
   const queryClient = useQueryClient();
 
   // Supabaseの認証状態変更を監視
@@ -51,44 +51,44 @@ export default function RootNavigator() {
   }
 
   // 認証状態による画面分岐
-  // 1. 未認証: AuthNavigator（ログイン・新規登録）
-  // 2. メール認証待ち: EmailVerificationScreen（直接表示）
-  // 3. 認証完了: AppNavigator（メインアプリ）
+  // 1. 未認証: AuthNavigator（ログイン・新規登録・メール認証）
+  // 2. 認証完了: AppNavigator（メインアプリ）
   
-  console.log('Current auth status:', {
+  console.log('🔍 Current auth status:', {
     isAuthenticated,
-    isSignedIn: authStatusDetails.isSignedIn,
-    isEmailVerified: authStatusDetails.isEmailVerified,
-    needsEmailVerification: authStatusDetails.needsEmailVerification,
+    isLoading,
+    user: user ? {
+      id: user.id,
+      email: user.email,
+      emailVerified: user.emailVerified,
+    } : null,
   });
 
-  if (!authStatusDetails.isSignedIn) {
-    // 未認証状態 → AuthNavigator
-    console.log('Showing AuthNavigator - user not signed in');
+  // メール認証完了済みの場合のみAppNavigatorに遷移
+  const shouldShowApp = isAuthenticated && user?.emailVerified;
+  
+  console.log('🎯 Navigation decision:', {
+    shouldShowApp,
+    reason: shouldShowApp ? 'User is authenticated and email verified' : 
+            !isAuthenticated ? 'User not authenticated' : 
+            'Email not verified'
+  });
+
+  if (shouldShowApp) {
+    // 認証完了状態 → AppNavigator
+    console.log('✅ Showing AppNavigator - user authenticated and verified');
     return (
       <NavigationContainer>
-        <AuthNavigator />
+        <AppNavigator />
       </NavigationContainer>
     );
   }
 
-  if (authStatusDetails.needsEmailVerification) {
-    // メール認証待ち状態 → EmailVerificationScreen（直接表示）
-    console.log('Showing EmailVerificationScreen - needs email verification');
-    // Note: この実装では、EmailVerificationScreenを単体で表示
-    // 実際の実装では、NavigatorでWrapするか、AuthNavigatorに統合する
-    return (
-      <NavigationContainer>
-        <AuthNavigator />
-      </NavigationContainer>
-    );
-  }
-
-  // 認証完了状態 → AppNavigator
-  console.log('Showing AppNavigator - user authenticated and verified');
+  // 未認証またはメール認証待ち状態 → AuthNavigator
+  console.log('🔐 Showing AuthNavigator - user not authenticated or needs email verification');
   return (
     <NavigationContainer>
-      <AppNavigator />
+      <AuthNavigator />
     </NavigationContainer>
   );
 }

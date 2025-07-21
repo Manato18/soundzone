@@ -8,7 +8,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { useLoginFormHook } from '../presenter/hooks/useAuth';
+import { useLoginFormHook } from './hooks/use-auth';
 
 interface LoginScreenProps {
   navigation: {
@@ -17,7 +17,7 @@ interface LoginScreenProps {
 }
 
 export default function LoginScreen({ navigation }: LoginScreenProps) {
-  const { form, actions, isSubmitting } = useLoginFormHook();
+  const { form, updateEmail, updatePassword, handleSubmit, isSubmitting } = useLoginFormHook();
 
   const handleSignUp = () => {
     navigation.navigate('SignUp');
@@ -47,7 +47,7 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
           style={[styles.input, form.errors.email && styles.inputError]}
           placeholder="メールアドレス"
           value={form.email}
-          onChangeText={actions.updateEmail}
+          onChangeText={updateEmail}
           keyboardType="email-address"
           autoCapitalize="none"
           editable={!isSubmitting}
@@ -60,7 +60,7 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
           style={[styles.input, form.errors.password && styles.inputError]}
           placeholder="パスワード"
           value={form.password}
-          onChangeText={actions.updatePassword}
+          onChangeText={updatePassword}
           secureTextEntry
           editable={!isSubmitting}
         />
@@ -70,7 +70,7 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
 
         <TouchableOpacity
           style={[styles.button, styles.loginButton]}
-          onPress={actions.handleSubmit}
+          onPress={handleSubmit}
           disabled={isSubmitting}
         >
           {isSubmitting ? (

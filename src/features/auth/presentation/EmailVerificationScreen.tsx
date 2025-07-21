@@ -1,18 +1,18 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useCallback, useRef, useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    Keyboard,
-    Platform,
-    SafeAreaView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  Keyboard,
+  Platform,
+  SafeAreaView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
-import { useEmailVerificationHook } from '../presenter/hooks/useAuth';
+import { useEmailVerificationHook } from './hooks/use-auth';
 
 interface EmailVerificationScreenProps {
   route: {
@@ -33,15 +33,13 @@ export default function EmailVerificationScreen({
   
   // 統合フックを使用
   const {
-    verificationCode,
+    verification,
+    verifyOTP,
+    resendEmail,
+    updateCode,
+    clearErrors,
     isVerifying,
     isResending,
-    resendCooldown,
-    errors,
-    verifyOTPCode,
-    resendVerificationEmail,
-    updateVerificationCode,
-    resetVerificationCode,
   } = useEmailVerificationHook();
   
   // 6桁のOTPコード管理（各桁を配列で管理）
@@ -61,7 +59,7 @@ export default function EmailVerificationScreen({
       setOtpCode(newOtpCode);
       
       // 統合フックに反映
-      updateVerificationCode(newOtpCode.join(''));
+      updateCode(newOtpCode.join(''));
       
       // 次の入力フィールドにフォーカス移動
       if (numericValue && index < 5) {
@@ -75,7 +73,7 @@ export default function EmailVerificationScreen({
         handleVerifyOtp(completeCode);
       }
     }
-  }, [otpCode, updateVerificationCode]);
+  }, [otpCode, updateCode]);
 
   // バックスペース処理
   const handleOtpKeyPress = useCallback((key: string, index: number) => {
@@ -85,25 +83,28 @@ export default function EmailVerificationScreen({
     }
   }, [otpCode]);
 
-  // OTP検証処理
+    // OTP検証処理
   const handleVerifyOtp = useCallback(async (code: string) => {
-    const result = await verifyOTPCode(email, code);
+    const result = await verifyOTP(code);
     
     if (result.success) {
+      // OTP認証成功後、アラートを表示
       Alert.alert('認証完了', 'メール認証が完了しました！', [
         { text: 'OK', onPress: () => {
-          // TODO: メイン画面に遷移（実際にはナビゲーションスタックをリセット）
-          console.log('Navigate to main app');
+          // OTP認証完了後、RootNavigatorに認証状態の再評価を任せる
+          // 認証状態が更新されれば、RootNavigatorが自動的にAppNavigatorに切り替える
+          // EmailVerificationScreenからの明示的な遷移は不要
+          console.log('OTP verification completed - authentication state will be re-evaluated');
         }}
       ]);
     }
-  }, [email, verifyOTPCode]);
+  }, [verifyOTP]);
 
   // メール再送信処理
   const handleResendEmail = useCallback(async () => {
-    if (resendCooldown > 0) return;
+    if (verification.resendCooldown > 0) return;
     
-    const result = await resendVerificationEmail(email);
+    const result = await resendEmail();
     
     if (result.success) {
       Alert.alert(
@@ -112,14 +113,15 @@ export default function EmailVerificationScreen({
         [{ text: 'OK' }]
       );
     }
-  }, [email, resendVerificationEmail, resendCooldown]);
+  }, [resendEmail, verification.resendCooldown]);
 
   // フォームリセット
   const handleReset = useCallback(() => {
     setOtpCode(['', '', '', '', '', '']);
-    resetVerificationCode();
+    updateCode('');
+    clearErrors();
     inputRefs.current[0]?.focus();
-  }, [resetVerificationCode]);
+  }, [updateCode, clearErrors]);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -154,7 +156,7 @@ export default function EmailVerificationScreen({
               style={[
                 styles.otpInput,
                 digit ? styles.otpInputFilled : null,
-                errors.code ? styles.otpInputError : null,
+                verification.errors.code ? styles.otpInputError : null,
               ]}
               value={digit}
               onChangeText={(value) => handleOtpCodeChange(value, index)}
@@ -169,9 +171,9 @@ export default function EmailVerificationScreen({
           ))}
         </View>
 
-        {(errors.code || errors.general) && (
+        {(verification.errors.code || verification.errors.general) && (
           <Text style={styles.errorText}>
-            {errors.code || errors.general}
+            {verification.errors.code || verification.errors.general}
           </Text>
         )}
 
@@ -202,17 +204,17 @@ export default function EmailVerificationScreen({
           <TouchableOpacity
             style={[
               styles.resendButton,
-              (resendCooldown > 0 || isResending) && styles.resendButtonDisabled
+              (verification.resendCooldown > 0 || isResending) && styles.resendButtonDisabled
             ]}
             onPress={handleResendEmail}
-            disabled={resendCooldown > 0 || isResending}
+            disabled={verification.resendCooldown > 0 || isResending}
           >
             {isResending ? (
               <ActivityIndicator size="small" color="white" />
             ) : (
               <Text style={styles.resendButtonText}>
-                {resendCooldown > 0 
-                  ? `再送信可能まで ${resendCooldown}秒` 
+                {verification.resendCooldown > 0 
+                  ? `再送信可能まで ${verification.resendCooldown}秒` 
                   : 'メール再送信'
                 }
               </Text>

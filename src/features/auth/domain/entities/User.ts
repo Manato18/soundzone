@@ -10,6 +10,15 @@ export interface UserProps {
   };
 }
 
+// TanStack Query用のシンプルなユーザー型
+export interface QueryUser {
+  id: string;
+  email: string;
+  emailVerified: boolean;
+  name?: string;
+  avatarUrl?: string;
+}
+
 export class User {
   private constructor(private readonly props: UserProps) {}
 
