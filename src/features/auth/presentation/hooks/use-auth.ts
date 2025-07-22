@@ -350,6 +350,7 @@ export const useSignUpFormHook = () => {
   const clearSignUpForm = useClearSignUpForm();
   const setSignUpSubmitting = useSetSignUpSubmitting();
   const showEmailVerificationModal = useShowEmailVerificationModal();
+  const startResendCooldown = useStartResendCooldown();
   const signUpMutation = useSignUpMutation();
 
   const handleSubmit = useCallback(async () => {
@@ -407,6 +408,8 @@ export const useSignUpFormHook = () => {
       
       if (result.needsEmailVerification) {
         showEmailVerificationModal(form.email);
+        // 新規登録直後は再送信を防ぐためクールダウンタイマーを開始
+        startResendCooldown();
       }
       
       return { 
@@ -421,7 +424,7 @@ export const useSignUpFormHook = () => {
     } finally {
       setSignUpSubmitting(false);
     }
-  }, [form.email, form.password, form.confirmPassword, signUpMutation, setSignUpError, setSignUpSubmitting, clearSignUpForm, showEmailVerificationModal]);
+  }, [form.email, form.password, form.confirmPassword, signUpMutation, setSignUpError, setSignUpSubmitting, clearSignUpForm, showEmailVerificationModal, startResendCooldown]);
 
   return {
     form,
