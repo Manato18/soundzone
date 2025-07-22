@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { useMutation, useQuery, useQueryClient, UseMutationOptions } from '@tanstack/react-query';
 import { queryKeys } from '../../../../shared/presenter/queries/queryClient';
 import { authService, AuthResult, SignUpResult } from '../../infrastructure/auth-service';
@@ -9,6 +9,7 @@ import {
   useLoginForm,
   useSignUpForm,
   useEmailVerification,
+  useAuthSettings,
   useSetUser,
   useUpdateLoginForm,
   useSetLoginError,
@@ -28,7 +29,7 @@ import {
   useShowEmailVerificationModal,
   useHideEmailVerificationModal,
   useReset,
-  useLoadPersistentSettings,
+  useSetLastLoginEmail,
 } from '../../application/auth-store';
 
 // Presentation Layer: UI向けのHookと TanStack Query
@@ -47,13 +48,21 @@ export const useCurrentUserQuery = () => {
     staleTime: 5 * 60 * 1000, // 5分キャッシュ
     refetchOnMount: true,
     refetchOnWindowFocus: false,
+    // エラーハンドリング
+    onError: (error) => {
+      console.error('Failed to fetch current user:', error);
+      setUser(null);
+    },
   });
 };
 
 // === ミューテーション ===
-export const useSignInMutation = (options?: Omit<UseMutationOptions<AuthResult<QueryUser>, Error, { email: string; password: string }>, 'mutationFn'>) => {
+export const useSignInMutation = (
+  options?: Omit<UseMutationOptions<AuthResult<QueryUser>, Error, { email: string; password: string }>, 'mutationFn'>
+) => {
   const queryClient = useQueryClient();
   const setUser = useSetUser();
+  const setLastLoginEmail = useSetLastLoginEmail();
 
   return useMutation({
     mutationFn: async ({ email, password }: { email: string; password: string }) => {
@@ -61,16 +70,27 @@ export const useSignInMutation = (options?: Omit<UseMutationOptions<AuthResult<Q
       
       if (result.success && result.data) {
         setUser(result.data);
+        setLastLoginEmail(result.data.email);
         queryClient.setQueryData(queryKeys.auth.user(), result.data);
+        
+        // 認証後に関連するクエリを再フェッチ
+        queryClient.invalidateQueries({ 
+          predicate: (query) => query.queryKey[0] !== 'auth' 
+        });
       }
       
       return result;
+    },
+    onError: (error) => {
+      console.error('Sign in error:', error);
     },
     ...options,
   });
 };
 
-export const useSignUpMutation = (options?: Omit<UseMutationOptions<SignUpResult, Error, { email: string; password: string }>, 'mutationFn'>) => {
+export const useSignUpMutation = (
+  options?: Omit<UseMutationOptions<SignUpResult, Error, { email: string; password: string }>, 'mutationFn'>
+) => {
   const queryClient = useQueryClient();
   const setUser = useSetUser();
 
@@ -88,26 +108,46 @@ export const useSignUpMutation = (options?: Omit<UseMutationOptions<SignUpResult
       
       return result;
     },
+    onError: (error) => {
+      console.error('Sign up error:', error);
+    },
     ...options,
   });
 };
 
-export const useSignOutMutation = (options?: Omit<UseMutationOptions<void, Error, void>, 'mutationFn'>) => {
+export const useSignOutMutation = (
+  options?: Omit<UseMutationOptions<void, Error, void>, 'mutationFn'>
+) => {
   const queryClient = useQueryClient();
   const reset = useReset();
 
   return useMutation({
     mutationFn: async () => {
       await authService.signOut();
+    },
+    onSuccess: () => {
+      // 状態をリセット
       reset();
+      
+      // キャッシュをクリア
       queryClient.setQueryData(queryKeys.auth.user(), null);
       queryClient.removeQueries({ queryKey: queryKeys.auth.all });
+      
+      // 認証関連以外のクエリも無効化
+      queryClient.invalidateQueries({ 
+        predicate: (query) => query.queryKey[0] !== 'auth' 
+      });
+    },
+    onError: (error) => {
+      console.error('Sign out error:', error);
     },
     ...options,
   });
 };
 
-export const useVerifyOTPMutation = (options?: Omit<UseMutationOptions<AuthResult<QueryUser>, Error, { email: string; token: string; type: 'signup' | 'email' | 'recovery' }>, 'mutationFn'>) => {
+export const useVerifyOTPMutation = (
+  options?: Omit<UseMutationOptions<AuthResult<QueryUser>, Error, { email: string; token: string; type: 'signup' | 'email' | 'recovery' }>, 'mutationFn'>
+) => {
   const queryClient = useQueryClient();
   const setUser = useSetUser();
 
@@ -123,23 +163,36 @@ export const useVerifyOTPMutation = (options?: Omit<UseMutationOptions<AuthResul
       
       return result;
     },
-    ...options,
-  });
-};
-
-export const useResendVerificationEmailMutation = (options?: Omit<UseMutationOptions<void, Error, { email: string }>, 'mutationFn'>) => {
-  return useMutation({
-    mutationFn: async ({ email }) => {
-      await authService.resendVerificationEmail(email);
+    onError: (error) => {
+      console.error('OTP verification error:', error);
     },
     ...options,
   });
 };
 
-export const usePasswordResetMutation = (options?: Omit<UseMutationOptions<void, Error, { email: string }>, 'mutationFn'>) => {
+export const useResendVerificationEmailMutation = (
+  options?: Omit<UseMutationOptions<void, Error, { email: string }>, 'mutationFn'>
+) => {
+  return useMutation({
+    mutationFn: async ({ email }) => {
+      await authService.resendVerificationEmail(email);
+    },
+    onError: (error) => {
+      console.error('Resend verification email error:', error);
+    },
+    ...options,
+  });
+};
+
+export const usePasswordResetMutation = (
+  options?: Omit<UseMutationOptions<void, Error, { email: string }>, 'mutationFn'>
+) => {
   return useMutation({
     mutationFn: async ({ email }) => {
       await authService.resetPassword(email);
+    },
+    onError: (error) => {
+      console.error('Password reset error:', error);
     },
     ...options,
   });
@@ -151,17 +204,12 @@ export const usePasswordResetMutation = (options?: Omit<UseMutationOptions<void,
 export const useAuth = () => {
   const user = useAuthUser();
   const isAuthenticated = useIsAuthenticated();
-  const loadPersistentSettings = useLoadPersistentSettings();
+  const settings = useAuthSettings();
   const { isLoading } = useCurrentUserQuery();
 
   const signInMutation = useSignInMutation();
   const signUpMutation = useSignUpMutation();
   const signOutMutation = useSignOutMutation();
-
-  // 初期化時に永続化された設定をロード
-  useEffect(() => {
-    loadPersistentSettings();
-  }, [loadPersistentSettings]);
 
   const signIn = useCallback(async (email: string, password: string) => {
     try {
@@ -193,6 +241,8 @@ export const useAuth = () => {
       await signOutMutation.mutateAsync();
     } catch (error) {
       console.error('Sign out error:', error);
+      // サインアウトは失敗してもローカル状態をクリアする
+      signOutMutation.onSuccess?.();
     }
   }, [signOutMutation]);
 
@@ -201,6 +251,7 @@ export const useAuth = () => {
     user,
     isAuthenticated,
     isLoading: isLoading || signInMutation.isPending || signUpMutation.isPending || signOutMutation.isPending,
+    settings,
     
     // 操作
     signIn,
@@ -211,17 +262,32 @@ export const useAuth = () => {
     isSigningIn: signInMutation.isPending,
     isSigningUp: signUpMutation.isPending,
     isSigningOut: signOutMutation.isPending,
+    
+    // エラー状態
+    signInError: signInMutation.error,
+    signUpError: signUpMutation.error,
+    signOutError: signOutMutation.error,
   };
 };
 
 // ログインフォームHook
 export const useLoginFormHook = () => {
   const form = useLoginForm();
+  const settings = useAuthSettings();
   const updateLoginForm = useUpdateLoginForm();
   const setLoginError = useSetLoginError();
   const clearLoginForm = useClearLoginForm();
   const setLoginSubmitting = useSetLoginSubmitting();
   const signInMutation = useSignInMutation();
+
+  // 初回マウント時に最後のログインメールを設定
+  const hasSetInitialEmail = useRef(false);
+  useEffect(() => {
+    if (settings.lastLoginEmail && !hasSetInitialEmail.current) {
+      updateLoginForm({ email: settings.lastLoginEmail });
+      hasSetInitialEmail.current = true;
+    }
+  }, [settings.lastLoginEmail, updateLoginForm]);
 
   const handleSubmit = useCallback(async () => {
     // バリデーション
@@ -229,6 +295,14 @@ export const useLoginFormHook = () => {
       setLoginError('email', 'メールアドレスを入力してください');
       return { success: false };
     }
+    
+    // メールアドレスの形式チェック
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(form.email)) {
+      setLoginError('email', '有効なメールアドレスを入力してください');
+      return { success: false };
+    }
+    
     if (!form.password.trim()) {
       setLoginError('password', 'パスワードを入力してください');
       return { success: false };
@@ -284,16 +358,35 @@ export const useSignUpFormHook = () => {
       setSignUpError('email', 'メールアドレスを入力してください');
       return { success: false };
     }
+    
+    // メールアドレスの形式チェック
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(form.email)) {
+      setSignUpError('email', '有効なメールアドレスを入力してください');
+      return { success: false };
+    }
+    
     if (!form.password.trim()) {
       setSignUpError('password', 'パスワードを入力してください');
       return { success: false };
     }
-    if (form.password !== form.confirmPassword) {
-      setSignUpError('confirmPassword', 'パスワードが一致しません');
-      return { success: false };
-    }
+    
     if (form.password.length < 8) {
       setSignUpError('password', 'パスワードは8文字以上で入力してください');
+      return { success: false };
+    }
+    
+    // パスワード強度チェック（オプション）
+    const hasUpperCase = /[A-Z]/.test(form.password);
+    const hasLowerCase = /[a-z]/.test(form.password);
+    const hasNumbers = /\d/.test(form.password);
+    if (!hasUpperCase || !hasLowerCase || !hasNumbers) {
+      setSignUpError('password', 'パスワードは大文字、小文字、数字を含む必要があります');
+      return { success: false };
+    }
+    
+    if (form.password !== form.confirmPassword) {
+      setSignUpError('confirmPassword', 'パスワードが一致しません');
       return { success: false };
     }
 
@@ -368,6 +461,17 @@ export const useEmailVerificationHook = () => {
   const verifyOTP = useCallback(async (code: string) => {
     if (!verification.email) {
       return { success: false, error: 'メールアドレスが設定されていません' };
+    }
+
+    // OTPコードのバリデーション
+    if (!code.trim()) {
+      setVerificationError('code', '認証コードを入力してください');
+      return { success: false, error: '認証コードを入力してください' };
+    }
+    
+    if (code.length !== 6 || !/^\d+$/.test(code)) {
+      setVerificationError('code', '6桁の数字を入力してください');
+      return { success: false, error: '6桁の数字を入力してください' };
     }
 
     setVerificationSubmitting(true);

@@ -1,6 +1,7 @@
 import { create } from 'zustand';
-import { subscribeWithSelector } from 'zustand/middleware';
-import { MMKVStorage, StorageKeys } from '../../../shared/infra/storage/mmkvStorage';
+import { devtools, persist, subscribeWithSelector } from 'zustand/middleware';
+import { immer } from 'zustand/middleware/immer';
+import { storage } from '../../../shared/infra/storage/mmkvStorage';
 import { QueryUser } from '../domain/entities/User';
 
 // Application Layer: ビジネスロジックと状態管理
@@ -52,12 +53,14 @@ export interface AuthState {
       showPasswordReset: boolean;
       showEmailVerification: boolean;
     };
+  };
 
-    settings: {
-      biometricEnabled: boolean;
-      autoLoginEnabled: boolean;
-      isFirstLaunch: boolean;
-    };
+  // 永続化する設定（persist対象）
+  settings: {
+    biometricEnabled: boolean;
+    autoLoginEnabled: boolean;
+    isFirstLaunch: boolean;
+    lastLoginEmail?: string;
   };
 }
 
@@ -98,10 +101,10 @@ export interface AuthActions {
   setBiometricEnabled: (enabled: boolean) => void;
   setAutoLoginEnabled: (enabled: boolean) => void;
   setFirstLaunch: (isFirst: boolean) => void;
+  setLastLoginEmail: (email?: string) => void;
 
   // ユーティリティ
   reset: () => void;
-  loadPersistentSettings: () => void;
 }
 
 // 初期状態
@@ -133,364 +136,290 @@ const initialState: AuthState = {
       showPasswordReset: false,
       showEmailVerification: false,
     },
-    settings: {
-      biometricEnabled: false,
-      autoLoginEnabled: false,
-      isFirstLaunch: true,
-    },
+  },
+  settings: {
+    biometricEnabled: false,
+    autoLoginEnabled: false,
+    isFirstLaunch: true,
   },
 };
 
-// メインストア
+// カスタムストレージアダプター（MMKV用）
+const mmkvStorage = {
+  getItem: (name: string) => {
+    const value = storage.getString(name);
+    return value ? JSON.parse(value) : null;
+  },
+  setItem: (name: string, value: any) => {
+    storage.set(name, JSON.stringify(value));
+  },
+  removeItem: (name: string) => {
+    storage.delete(name);
+  },
+};
+
+// メインストア（middleware順序: devtools → persist → immer → subscribeWithSelector）
 export const useAuthStore = create<AuthState & AuthActions>()(
-  subscribeWithSelector((set, get) => ({
-    ...initialState,
+  devtools(
+    persist(
+      immer(
+        subscribeWithSelector((set) => ({
+          ...initialState,
 
-    // サーバー状態更新
-    setUser: (user) => {
-      set((state) => ({ 
-        ...state,
-        user,
-        isAuthenticated: !!user,
-      }));
-      
-      // 最後のログインメールを保存
-      if (user?.email) {
-        MMKVStorage.setString(StorageKeys.LAST_LOGIN_EMAIL, user.email);
+          // サーバー状態更新
+          setUser: (user) => {
+            set((state) => {
+              state.user = user;
+              state.isAuthenticated = !!user;
+              
+              // 最後のログインメールを設定に保存
+              if (user?.email) {
+                state.settings.lastLoginEmail = user.email;
+              }
+            });
+          },
+
+          setAuthenticated: (isAuthenticated) =>
+            set((state) => {
+              state.isAuthenticated = isAuthenticated;
+            }),
+
+          // ログインフォーム（immerによる簡潔な更新）
+          updateLoginForm: (updates) =>
+            set((state) => {
+              Object.assign(state.ui.loginForm, updates);
+              
+              // 入力時にエラーをクリア
+              if (updates.email !== undefined || updates.password !== undefined) {
+                state.ui.loginForm.errors = {};
+              }
+            }),
+
+          setLoginError: (field, error) =>
+            set((state) => {
+              if (error === undefined) {
+                delete state.ui.loginForm.errors[field];
+              } else {
+                state.ui.loginForm.errors[field] = error;
+              }
+            }),
+
+          clearLoginForm: () =>
+            set((state) => {
+              state.ui.loginForm = {
+                ...initialState.ui.loginForm,
+                email: state.settings.lastLoginEmail || '',
+              };
+            }),
+
+          setLoginSubmitting: (isSubmitting) =>
+            set((state) => {
+              state.ui.loginForm.isSubmitting = isSubmitting;
+            }),
+
+          // サインアップフォーム
+          updateSignUpForm: (updates) =>
+            set((state) => {
+              Object.assign(state.ui.signUpForm, updates);
+              
+              if (updates.email !== undefined || updates.password !== undefined || updates.confirmPassword !== undefined) {
+                state.ui.signUpForm.errors = {};
+              }
+            }),
+
+          setSignUpError: (field, error) =>
+            set((state) => {
+              if (error === undefined) {
+                delete state.ui.signUpForm.errors[field];
+              } else {
+                state.ui.signUpForm.errors[field] = error;
+              }
+            }),
+
+          clearSignUpForm: () =>
+            set((state) => {
+              state.ui.signUpForm = initialState.ui.signUpForm;
+            }),
+
+          setSignUpSubmitting: (isSubmitting) =>
+            set((state) => {
+              state.ui.signUpForm.isSubmitting = isSubmitting;
+            }),
+
+          // メール認証
+          setEmailVerificationEmail: (email) =>
+            set((state) => {
+              state.ui.emailVerification.email = email;
+            }),
+
+          setVerificationCode: (code) =>
+            set((state) => {
+              state.ui.emailVerification.verificationCode = code;
+              // コード入力時にコードエラーをクリア
+              delete state.ui.emailVerification.errors.code;
+            }),
+
+          setVerificationError: (field, error) =>
+            set((state) => {
+              if (error === undefined) {
+                delete state.ui.emailVerification.errors[field];
+              } else {
+                state.ui.emailVerification.errors[field] = error;
+              }
+            }),
+
+          setVerificationSubmitting: (isVerifying) =>
+            set((state) => {
+              state.ui.emailVerification.isVerifying = isVerifying;
+            }),
+
+          setResending: (isResending) =>
+            set((state) => {
+              state.ui.emailVerification.isResending = isResending;
+            }),
+
+          startResendCooldown: () =>
+            set((state) => {
+              state.ui.emailVerification.resendCooldown = 60;
+              state.ui.emailVerification.lastSentAt = new Date();
+            }),
+
+          decrementResendCooldown: () =>
+            set((state) => {
+              state.ui.emailVerification.resendCooldown = Math.max(0, state.ui.emailVerification.resendCooldown - 1);
+            }),
+
+          clearEmailVerificationForm: () =>
+            set((state) => {
+              const email = state.ui.emailVerification.email;
+              state.ui.emailVerification = {
+                ...initialState.ui.emailVerification,
+                email, // メールアドレスは保持
+              };
+            }),
+
+          // モーダル
+          showPasswordResetModal: () =>
+            set((state) => {
+              state.ui.modals.showPasswordReset = true;
+            }),
+
+          hidePasswordResetModal: () =>
+            set((state) => {
+              state.ui.modals.showPasswordReset = false;
+            }),
+
+          showEmailVerificationModal: (email) =>
+            set((state) => {
+              state.ui.modals.showEmailVerification = true;
+              if (email) {
+                state.ui.emailVerification.email = email;
+              }
+            }),
+
+          hideEmailVerificationModal: () =>
+            set((state) => {
+              state.ui.modals.showEmailVerification = false;
+            }),
+
+          // 設定
+          setBiometricEnabled: (enabled) =>
+            set((state) => {
+              state.settings.biometricEnabled = enabled;
+            }),
+
+          setAutoLoginEnabled: (enabled) =>
+            set((state) => {
+              state.settings.autoLoginEnabled = enabled;
+            }),
+
+          setFirstLaunch: (isFirst) =>
+            set((state) => {
+              state.settings.isFirstLaunch = isFirst;
+            }),
+
+          setLastLoginEmail: (email) =>
+            set((state) => {
+              state.settings.lastLoginEmail = email;
+            }),
+
+          // ユーティリティ
+          reset: () =>
+            set((state) => {
+              // 設定以外をリセット
+              state.user = null;
+              state.isAuthenticated = false;
+              state.ui = initialState.ui;
+              // 設定は保持（lastLoginEmailも含む）
+            }),
+        }))
+      ),
+      {
+        name: 'auth-storage',
+        storage: mmkvStorage,
+        // 永続化する部分のみを指定
+        partialize: (state) => ({
+          settings: state.settings,
+        }),
       }
-    },
-
-    setAuthenticated: (isAuthenticated) =>
-      set((state) => ({ ...state, isAuthenticated })),
-
-    // ログインフォーム
-    updateLoginForm: (updates) =>
-      set((state) => ({
-        ui: {
-          ...state.ui,
-          loginForm: {
-            ...state.ui.loginForm,
-            ...updates,
-            // 入力時にエラーをクリア
-            errors: (updates.email !== undefined || updates.password !== undefined) 
-              ? {} 
-              : state.ui.loginForm.errors,
-          },
-        },
-      })),
-
-    setLoginError: (field, error) =>
-      set((state) => ({
-        ui: {
-          ...state.ui,
-          loginForm: {
-            ...state.ui.loginForm,
-            errors: {
-              ...state.ui.loginForm.errors,
-              [field]: error,
-            },
-          },
-        },
-      })),
-
-    clearLoginForm: () =>
-      set((state) => ({
-        ui: {
-          ...state.ui,
-          loginForm: initialState.ui.loginForm,
-        },
-      })),
-
-    setLoginSubmitting: (isSubmitting) =>
-      set((state) => ({
-        ui: {
-          ...state.ui,
-          loginForm: {
-            ...state.ui.loginForm,
-            isSubmitting,
-          },
-        },
-      })),
-
-    // サインアップフォーム
-    updateSignUpForm: (updates) =>
-      set((state) => ({
-        ui: {
-          ...state.ui,
-          signUpForm: {
-            ...state.ui.signUpForm,
-            ...updates,
-            errors: (updates.email !== undefined || updates.password !== undefined || updates.confirmPassword !== undefined)
-              ? {}
-              : state.ui.signUpForm.errors,
-          },
-        },
-      })),
-
-    setSignUpError: (field, error) =>
-      set((state) => ({
-        ui: {
-          ...state.ui,
-          signUpForm: {
-            ...state.ui.signUpForm,
-            errors: {
-              ...state.ui.signUpForm.errors,
-              [field]: error,
-            },
-          },
-        },
-      })),
-
-    clearSignUpForm: () =>
-      set((state) => ({
-        ui: {
-          ...state.ui,
-          signUpForm: initialState.ui.signUpForm,
-        },
-      })),
-
-    setSignUpSubmitting: (isSubmitting) =>
-      set((state) => ({
-        ui: {
-          ...state.ui,
-          signUpForm: {
-            ...state.ui.signUpForm,
-            isSubmitting,
-          },
-        },
-      })),
-
-    // メール認証
-    setEmailVerificationEmail: (email) =>
-      set((state) => ({
-        ui: {
-          ...state.ui,
-          emailVerification: {
-            ...state.ui.emailVerification,
-            email,
-          },
-        },
-      })),
-
-    setVerificationCode: (code) =>
-      set((state) => ({
-        ui: {
-          ...state.ui,
-          emailVerification: {
-            ...state.ui.emailVerification,
-            verificationCode: code,
-            // コード入力時にコードエラーをクリア
-            errors: {
-              ...state.ui.emailVerification.errors,
-              code: undefined,
-            },
-          },
-        },
-      })),
-
-    setVerificationError: (field, error) =>
-      set((state) => ({
-        ui: {
-          ...state.ui,
-          emailVerification: {
-            ...state.ui.emailVerification,
-            errors: {
-              ...state.ui.emailVerification.errors,
-              [field]: error,
-            },
-          },
-        },
-      })),
-
-    setVerificationSubmitting: (isVerifying) =>
-      set((state) => ({
-        ui: {
-          ...state.ui,
-          emailVerification: {
-            ...state.ui.emailVerification,
-            isVerifying,
-          },
-        },
-      })),
-
-    setResending: (isResending) =>
-      set((state) => ({
-        ui: {
-          ...state.ui,
-          emailVerification: {
-            ...state.ui.emailVerification,
-            isResending,
-          },
-        },
-      })),
-
-    startResendCooldown: () =>
-      set((state) => ({
-        ui: {
-          ...state.ui,
-          emailVerification: {
-            ...state.ui.emailVerification,
-            resendCooldown: 60,
-            lastSentAt: new Date(),
-          },
-        },
-      })),
-
-    decrementResendCooldown: () =>
-      set((state) => ({
-        ui: {
-          ...state.ui,
-          emailVerification: {
-            ...state.ui.emailVerification,
-            resendCooldown: Math.max(0, state.ui.emailVerification.resendCooldown - 1),
-          },
-        },
-      })),
-
-    clearEmailVerificationForm: () =>
-      set((state) => ({
-        ui: {
-          ...state.ui,
-          emailVerification: {
-            ...initialState.ui.emailVerification,
-            email: state.ui.emailVerification.email, // メールアドレスは保持
-          },
-        },
-      })),
-
-    // モーダル
-    showPasswordResetModal: () =>
-      set((state) => ({
-        ui: {
-          ...state.ui,
-          modals: {
-            ...state.ui.modals,
-            showPasswordReset: true,
-          },
-        },
-      })),
-
-    hidePasswordResetModal: () =>
-      set((state) => ({
-        ui: {
-          ...state.ui,
-          modals: {
-            ...state.ui.modals,
-            showPasswordReset: false,
-          },
-        },
-      })),
-
-    showEmailVerificationModal: (email) =>
-      set((state) => ({
-        ui: {
-          ...state.ui,
-          modals: {
-            ...state.ui.modals,
-            showEmailVerification: true,
-          },
-          emailVerification: {
-            ...state.ui.emailVerification,
-            email: email || state.ui.emailVerification.email,
-          },
-        },
-      })),
-
-    hideEmailVerificationModal: () =>
-      set((state) => ({
-        ui: {
-          ...state.ui,
-          modals: {
-            ...state.ui.modals,
-            showEmailVerification: false,
-          },
-        },
-      })),
-
-    // 設定
-    setBiometricEnabled: (enabled) => {
-      MMKVStorage.setBoolean(StorageKeys.BIOMETRIC_ENABLED, enabled);
-      set((state) => ({
-        ui: {
-          ...state.ui,
-          settings: {
-            ...state.ui.settings,
-            biometricEnabled: enabled,
-          },
-        },
-      }));
-    },
-
-    setAutoLoginEnabled: (enabled) => {
-      MMKVStorage.setBoolean(StorageKeys.AUTO_LOGIN_ENABLED, enabled);
-      set((state) => ({
-        ui: {
-          ...state.ui,
-          settings: {
-            ...state.ui.settings,
-            autoLoginEnabled: enabled,
-          },
-        },
-      }));
-    },
-
-    setFirstLaunch: (isFirst) =>
-      set((state) => ({
-        ui: {
-          ...state.ui,
-          settings: {
-            ...state.ui.settings,
-            isFirstLaunch: isFirst,
-          },
-        },
-      })),
-
-    // ユーティリティ
-    reset: () => {
-      // 認証情報とUIをリセット（設定は保持）
-      set((state) => ({
-        ...initialState,
-        ui: {
-          ...initialState.ui,
-          settings: state.ui.settings, // 設定は保持
-        },
-      }));
-      
-      // MMKVから認証関連データを削除
-      MMKVStorage.delete(StorageKeys.AUTH_SESSION);
-      MMKVStorage.delete(StorageKeys.AUTH_USER);
-      MMKVStorage.delete(StorageKeys.AUTH_TOKENS);
-    },
-
-    loadPersistentSettings: () => {
-      set((state) => ({
-        ui: {
-          ...state.ui,
-          settings: {
-            ...state.ui.settings,
-            biometricEnabled: MMKVStorage.getBoolean(StorageKeys.BIOMETRIC_ENABLED) ?? false,
-            autoLoginEnabled: MMKVStorage.getBoolean(StorageKeys.AUTO_LOGIN_ENABLED) ?? false,
-          },
-          loginForm: {
-            ...state.ui.loginForm,
-            email: MMKVStorage.getString(StorageKeys.LAST_LOGIN_EMAIL) || '',
-          },
-        },
-      }));
-    },
-  }))
+    ),
+    {
+      name: 'auth-store',
+      enabled: process.env.NODE_ENV === 'development',
+    }
+  )
 );
 
-// セレクター（再描画最適化）
+// セレクター（再描画最適化 - shallow比較を使用）
 export const useAuthUser = () => useAuthStore((state) => state.user);
 export const useIsAuthenticated = () => useAuthStore((state) => state.isAuthenticated);
-export const useLoginForm = () => useAuthStore((state) => state.ui.loginForm);
-export const useSignUpForm = () => useAuthStore((state) => state.ui.signUpForm);
-export const useEmailVerification = () => useAuthStore((state) => state.ui.emailVerification);
-export const useAuthModals = () => useAuthStore((state) => state.ui.modals);
-export const useAuthSettings = () => useAuthStore((state) => state.ui.settings);
 
-// 個別のアクションセレクター（再描画最適化）
+// 複数の値を返すセレクターはshallow比較を使用
+export const useLoginForm = () => useAuthStore((state) => state.ui.loginForm);
+
+export const useSignUpForm = () => useAuthStore((state) => state.ui.signUpForm);
+
+export const useEmailVerification = () => useAuthStore((state) => state.ui.emailVerification);
+
+export const useAuthModals = () => useAuthStore((state) => state.ui.modals);
+
+export const useAuthSettings = () => useAuthStore((state) => state.settings);
+
+// アクションセレクター（個別）
+export const useAuthActions = () => {
+  const store = useAuthStore();
+  return {
+    setUser: store.setUser,
+    setAuthenticated: store.setAuthenticated,
+    updateLoginForm: store.updateLoginForm,
+    setLoginError: store.setLoginError,
+    clearLoginForm: store.clearLoginForm,
+    setLoginSubmitting: store.setLoginSubmitting,
+    updateSignUpForm: store.updateSignUpForm,
+    setSignUpError: store.setSignUpError,
+    clearSignUpForm: store.clearSignUpForm,
+    setSignUpSubmitting: store.setSignUpSubmitting,
+    setEmailVerificationEmail: store.setEmailVerificationEmail,
+    setVerificationCode: store.setVerificationCode,
+    setVerificationError: store.setVerificationError,
+    setVerificationSubmitting: store.setVerificationSubmitting,
+    setResending: store.setResending,
+    startResendCooldown: store.startResendCooldown,
+    decrementResendCooldown: store.decrementResendCooldown,
+    clearEmailVerificationForm: store.clearEmailVerificationForm,
+    showPasswordResetModal: store.showPasswordResetModal,
+    hidePasswordResetModal: store.hidePasswordResetModal,
+    showEmailVerificationModal: store.showEmailVerificationModal,
+    hideEmailVerificationModal: store.hideEmailVerificationModal,
+    setBiometricEnabled: store.setBiometricEnabled,
+    setAutoLoginEnabled: store.setAutoLoginEnabled,
+    setFirstLaunch: store.setFirstLaunch,
+    setLastLoginEmail: store.setLastLoginEmail,
+    reset: store.reset,
+  };
+};
+
+// 個別のアクションセレクター（後方互換性のため維持）
 export const useSetUser = () => useAuthStore((state) => state.setUser);
 export const useSetAuthenticated = () => useAuthStore((state) => state.setAuthenticated);
 export const useUpdateLoginForm = () => useAuthStore((state) => state.updateLoginForm);
@@ -516,36 +445,5 @@ export const useHideEmailVerificationModal = () => useAuthStore((state) => state
 export const useSetBiometricEnabled = () => useAuthStore((state) => state.setBiometricEnabled);
 export const useSetAutoLoginEnabled = () => useAuthStore((state) => state.setAutoLoginEnabled);
 export const useSetFirstLaunch = () => useAuthStore((state) => state.setFirstLaunch);
+export const useSetLastLoginEmail = () => useAuthStore((state) => state.setLastLoginEmail);
 export const useReset = () => useAuthStore((state) => state.reset);
-export const useLoadPersistentSettings = () => useAuthStore((state) => state.loadPersistentSettings);
-
-// 統合アクションセレクター（後方互換性のため維持）
-export const useAuthActions = () => useAuthStore((state) => ({
-  setUser: state.setUser,
-  setAuthenticated: state.setAuthenticated,
-  updateLoginForm: state.updateLoginForm,
-  setLoginError: state.setLoginError,
-  clearLoginForm: state.clearLoginForm,
-  setLoginSubmitting: state.setLoginSubmitting,
-  updateSignUpForm: state.updateSignUpForm,
-  setSignUpError: state.setSignUpError,
-  clearSignUpForm: state.clearSignUpForm,
-  setSignUpSubmitting: state.setSignUpSubmitting,
-  setEmailVerificationEmail: state.setEmailVerificationEmail,
-  setVerificationCode: state.setVerificationCode,
-  setVerificationError: state.setVerificationError,
-  setVerificationSubmitting: state.setVerificationSubmitting,
-  setResending: state.setResending,
-  startResendCooldown: state.startResendCooldown,
-  decrementResendCooldown: state.decrementResendCooldown,
-  clearEmailVerificationForm: state.clearEmailVerificationForm,
-  showPasswordResetModal: state.showPasswordResetModal,
-  hidePasswordResetModal: state.hidePasswordResetModal,
-  showEmailVerificationModal: state.showEmailVerificationModal,
-  hideEmailVerificationModal: state.hideEmailVerificationModal,
-  setBiometricEnabled: state.setBiometricEnabled,
-  setAutoLoginEnabled: state.setAutoLoginEnabled,
-  setFirstLaunch: state.setFirstLaunch,
-  reset: state.reset,
-  loadPersistentSettings: state.loadPersistentSettings,
-}));
