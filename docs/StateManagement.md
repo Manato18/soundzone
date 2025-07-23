@@ -1,6 +1,3 @@
----
-alwaysApply: true
----
 
 ## 1. 目的
 
