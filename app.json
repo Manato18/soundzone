@@ -15,7 +15,8 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.anonymous.soundzone",
       "infoPlist": {
-        "UIBackgroundModes": ["audio"]
+        "UIBackgroundModes": ["audio"],
+        "NSMicrophoneUsageDescription": "このアプリでは音声を録音してオーディオピンを作成するためにマイクを使用します。"
       }
     },
     "android": {
@@ -25,6 +26,11 @@
       },
       "edgeToEdgeEnabled": true,
       "package": "com.anonymous.soundzone",
+      "permissions": [
+        "RECORD_AUDIO",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION"
+      ],
       "config": {
         "googleMaps": {
           "apiKey": "AIzaSyDgC7jVfQc-5qL6Dl-9G0LdrP9UnHB3pp4"
@@ -46,8 +52,8 @@
           "resizeMode": "contain",
           "backgroundColor": "#ffffff"
         }
-              ],
-        "expo-asset"
-      ]
+      ],
+      "expo-asset"
+    ]
   }
 }
