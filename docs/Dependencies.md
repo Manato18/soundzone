@@ -13,8 +13,8 @@
 | **パッケージ名** | **バージョン** | **役割・用途** | **設定・注意点** |
 |---|---|---|---|
 | **React** | `19.0.0` | UIライブラリのコア | React 19の新機能を活用 |
-| **React Native** | `0.79.4` | クロスプラットフォーム開発 | 新アーキテクチャ対応 |
-| **Expo** | `~53.0.15` | 開発・ビルドプラットフォーム | Dev Client モードで使用 |
+| **React Native** | `0.79.5` | クロスプラットフォーム開発 | 新アーキテクチャ対応 |
+| **Expo** | `53.0.20` | 開発・ビルドプラットフォーム | Dev Client モードで使用 |
 | **TypeScript** | `~5.8.3` | 型安全性・開発効率 | 厳格な型チェック設定 |
 
 ## 2. 状態管理
@@ -24,6 +24,7 @@
 | **TanStack Query** | `^5.83.0` | サーバー状態管理・キャッシング | staleTime: 5分、リトライ制御実装済み |
 | **Zustand** | `^5.0.6` | UIクライアント状態管理 | devtools + persist + immer で構成 |
 | **Immer** | `^10.1.1` | イミュータブル状態更新 | Zustand との組み合わせで使用 |
+| **Async Storage** | `2.1.2` | 永続ストレージ | 必要に応じて使用 |
 
 **状態管理アーキテクチャ**
 ```
@@ -65,7 +66,7 @@ TanStack Query (サーバー状態) + Zustand (UI状態) + MMKV (永続化)
 | **Expo Location** | `~18.1.6` | 位置情報取得・監視 | 権限管理、精度設定 |
 
 **外部API連携**
-- **Google Maps API**: Android用、API Key必須
+- **Google Maps API**: Android用、API Key設定済み（app.json内）
 - **Apple Maps**: iOS用、追加設定不要
 
 ## 7. メディア・オーディオ
@@ -73,6 +74,8 @@ TanStack Query (サーバー状態) + Zustand (UI状態) + MMKV (永続化)
 | **パッケージ名** | **バージョン** | **役割・用途** | **設定・注意点** |
 |---|---|---|---|
 | **React Native Track Player** | `^4.1.1` | オーディオ再生・制御 | バックグラウンド再生対応、ネイティブ設定必要 |
+| **Expo Audio** | `^0.4.8` | 音声録音・再生 | マイク権限設定済み、録音機能対応 |
+| **Expo File System** | `^18.1.11` | ファイルシステムアクセス | 音声ファイル保存・読み込み |
 
 ## 8. UI・アニメーション
 
@@ -90,15 +93,15 @@ TanStack Query (サーバー状態) + Zustand (UI状態) + MMKV (永続化)
 | **Expo Router** | `~5.1.2` | ファイルベースルーティング | 使用せず、React Navigation を採用 |
 | **Expo Constants** | `~17.1.6` | アプリ定数・デバイス情報 | 環境変数アクセス |
 | **Expo Status Bar** | `~2.2.3` | ステータスバー制御 | テーマ連動 |
-| **Expo System UI** | `~5.0.9` | システムUI制御 | ナビゲーションバー制御 |
+| **Expo System UI** | `~5.0.10` | システムUI制御 | ナビゲーションバー制御 |
 | **Expo Font** | `~13.3.2` | カスタムフォント | SpaceMono-Regular 使用 |
-| **Expo Image** | `~2.3.1` | 最適化画像表示 | パフォーマンス向上 |
+| **Expo Image** | `~2.4.0` | 最適化画像表示 | パフォーマンス向上 |
 | **Expo Asset** | `~11.1.6` | アセット管理 | 画像・音声ファイル |
 | **Expo Symbols** | `~0.4.5` | SF Symbols 対応 | iOS ネイティブアイコン |
 | **Expo Web Browser** | `~14.2.0` | アプリ内ブラウザ | 外部リンク表示 |
-| **Expo Linking** | `~7.1.6` | ディープリンク・URL処理 | 外部アプリ起動 |
-| **Expo Splash Screen** | `~0.30.9` | スプラッシュスクリーン | 起動画面制御 |
-| **Expo Dev Client** | `^5.2.2` | 開発クライアント | カスタムネイティブコード対応 |
+| **Expo Linking** | `~7.1.7` | ディープリンク・URL処理 | 外部アプリ起動 |
+| **Expo Splash Screen** | `~0.30.10` | スプラッシュスクリーン | 起動画面制御 |
+| **Expo Dev Client** | `~5.2.4` | 開発クライアント | カスタムネイティブコード対応 |
 
 ## 10. その他・ユーティリティ
 
@@ -109,6 +112,8 @@ TanStack Query (サーバー状態) + Zustand (UI状態) + MMKV (永続化)
 | **React Native Safe Area Context** | `5.4.0` | セーフエリア対応 | ノッチ・ホームインジケータ考慮 |
 | **React Native Screens** | `~4.11.1` | ネイティブスクリーン最適化 | メモリ使用量削減 |
 | **Expo Vector Icons** | `^14.1.0` | アイコンライブラリ | 複数アイコンセット対応 |
+| **UUID** | `^11.1.0` | 一意識別子生成 | オーディオピン識別用 |
+| **Base64 ArrayBuffer** | `^1.0.2` | Base64エンコード・デコード | バイナリデータ変換 |
 
 ## 11. 開発ツール
 
@@ -116,21 +121,42 @@ TanStack Query (サーバー状態) + Zustand (UI状態) + MMKV (永続化)
 |---|---|---|---|
 | **ESLint** | `^9.25.0` | コード品質・スタイル | Expo Config 使用 |
 | **Babel Core** | `^7.25.2` | JavaScript トランスパイラ | React Native 設定 |
+| **TypeScript Types** | `~19.0.10` | React の型定義 | 開発時の型安全性 |
+| **UUID Types** | `^10.0.0` | UUID の型定義 | TypeScript サポート |
 
-## 12. 環境変数要件
+## 12. アプリ設定（app.json）
+
+**主要設定**
+- **新アーキテクチャ**: 有効化（newArchEnabled: true）
+- **開発クライアント**: サイレント起動無効
+- **音声機能**: バックグラウンド音声再生対応
+- **権限**: マイク録音権限設定済み
+
+**iOS 設定**
+- **Bundle ID**: com.anonymous.soundzone
+- **UIBackgroundModes**: audio（バックグラウンド音声）
+- **マイク権限**: 日本語説明文設定
+
+**Android 設定**
+- **Package**: com.anonymous.soundzone
+- **Google Maps API**: 設定済み
+- **Edge to Edge**: 有効化
+- **録音権限**: RECORD_AUDIO
+
+## 13. 環境変数要件
 
 ```env
 # Supabase
 SUPABASE_URL=<Supabase プロジェクト URL>
 SUPABASE_ANON_KEY=<Supabase 匿名認証キー>
 
-# Google Maps (Android)
+# Google Maps (Android) - app.json に直接設定済み
 EXPO_PUBLIC_GOOGLE_MAPS_API_KEY=<Google Maps API キー>
 ```
 
-## 13. バージョン管理ポリシー
+## 14. バージョン管理ポリシー
 
-- **React Native**: 0.75+ (新アーキテクチャ対応)
+- **React Native**: 0.79.5 (新アーキテクチャ対応)
 - **Expo SDK**: 53.x (安定版)
 - **Node.js**: 18.x 以上推奨
 - **セマンティックバージョニング**: メジャーアップデートは慎重に検討
@@ -139,6 +165,7 @@ EXPO_PUBLIC_GOOGLE_MAPS_API_KEY=<Google Maps API キー>
 
 **主要な依存関係の問題**
 - **MMKV**: 新アーキテクチャ必須、暗号化設定確認
+- **Expo Audio**: マイク権限設定、録音権限確認
 - **Track Player**: ネイティブ設定、Audio Session 設定
 - **Maps**: API キー設定、権限設定
 - **Reanimated**: Babel 設定、ネイティブランナー
@@ -147,5 +174,6 @@ EXPO_PUBLIC_GOOGLE_MAPS_API_KEY=<Google Maps API キー>
 - React Native バージョンアップ時は段階的に実施
 - Expo SDK 更新前に Breaking Changes 確認
 - ネイティブ依存関係は iOS/Android 両方でテスト
+- 音声機能は実機でのテストが必須
 
 ---
