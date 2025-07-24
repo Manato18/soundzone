@@ -1,10 +1,10 @@
 import * as Location from 'expo-location';
 import { useEffect, useRef } from 'react';
 import { Alert } from 'react-native';
-import { UserLocationData, LocationError } from '../../domain/entities/Location';
 import {
   useLocationStore,
 } from '../../application/location-store';
+import { LocationError, UserLocationData } from '../../domain/entities/Location';
 
 export const useLocation = () => {
   // Zustandストアから状態を取得（一時的な対処として直接ストアから取得）
@@ -140,7 +140,7 @@ export const useLocation = () => {
         (newLocation) => {
           // 新しい位置情報を設定する際、heading がnullの場合は現在の heading を保持
           const currentHeading = useLocationStore.getState().currentLocation?.coords.heading;
-          if (newLocation.coords.heading === null && currentHeading !== null) {
+          if (newLocation.coords.heading === null && currentHeading !== null && currentHeading !== undefined) {
             newLocation.coords.heading = currentHeading;
           }
           setCurrentLocation(newLocation);
