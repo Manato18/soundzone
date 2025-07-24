@@ -26,7 +26,13 @@ export default function HomeScreen() {
   
   useEffect(() => {
     // locationが有効な値の場合のみ更新
-    if (location && location.coords && location.coords.latitude && location.coords.longitude) {
+    // 緯度・経度が有効な数値であることを確認
+    if (location && 
+        location.coords && 
+        typeof location.coords.latitude === 'number' && 
+        typeof location.coords.longitude === 'number' &&
+        !isNaN(location.coords.latitude) && 
+        !isNaN(location.coords.longitude)) {
       setStableLocation(location);
     }
   }, [location]);

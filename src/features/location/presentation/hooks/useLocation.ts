@@ -139,8 +139,9 @@ export const useLocation = () => {
         },
         (newLocation) => {
           // 新しい位置情報を設定する際、heading がnullの場合は現在の heading を保持
-          if (newLocation.coords.heading === null && location?.coords.heading !== null) {
-            newLocation.coords.heading = location.coords.heading;
+          const currentHeading = useLocationStore.getState().currentLocation?.coords.heading;
+          if (newLocation.coords.heading === null && currentHeading !== null) {
+            newLocation.coords.heading = currentHeading;
           }
           setCurrentLocation(newLocation);
         }

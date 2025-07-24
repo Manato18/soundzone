@@ -1,7 +1,7 @@
 import React, { ReactNode, forwardRef } from 'react';
 import { StyleSheet, View } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
-import Svg, { Path } from 'react-native-svg';
+import Svg, { Path, Circle } from 'react-native-svg';
 import { UserLocationData } from '../../../location/domain/entities/Location';
 import { MapRegion } from '../../domain/entities/MapRegion';
 
@@ -14,6 +14,17 @@ interface MapContainerProps {
 
 export const MapContainer = forwardRef<MapView, MapContainerProps>(
   ({ region, onRegionChange, userLocation, children }, ref) => {
+    // デバッグ用：位置情報の変化を監視
+    React.useEffect(() => {
+      if (userLocation?.coords) {
+        console.log('Location update:', {
+          lat: userLocation.coords.latitude,
+          lng: userLocation.coords.longitude,
+          heading: userLocation.coords.heading,
+        });
+      }
+    }, [userLocation]);
+    
     return (
       <MapView
         ref={ref}
@@ -31,8 +42,15 @@ export const MapContainer = forwardRef<MapView, MapContainerProps>(
         rotateEnabled={true}
       >
         {/* 現在位置にシンプルなマーカーを表示 */}
-        {userLocation && (
+        {userLocation && 
+         userLocation.coords && 
+         typeof userLocation.coords.latitude === 'number' && 
+         typeof userLocation.coords.longitude === 'number' &&
+         !isNaN(userLocation.coords.latitude) && 
+         !isNaN(userLocation.coords.longitude) && (
           <Marker
+            key="user-location-marker"
+            identifier="user-location"
             coordinate={{
               latitude: userLocation.coords.latitude,
               longitude: userLocation.coords.longitude,
@@ -40,27 +58,50 @@ export const MapContainer = forwardRef<MapView, MapContainerProps>(
             title="現在位置"
             description={`精度: ${userLocation.coords.accuracy ? Math.round(userLocation.coords.accuracy) : '不明'}m`}
             anchor={{ x: 0.5, y: 0.5 }}
+            tracksViewChanges={false}
+            flat={true}
           >
             <View style={styles.markerContainer}>
-              {/* 方向を示す扇形 */}
-              {userLocation.coords.heading !== null && (
-                <View style={[styles.headingIndicator, { transform: [{ rotate: `${userLocation.coords.heading}deg` }] }]}>
-                  <Svg width="60" height="60" viewBox="0 0 60 60" style={styles.fanShape}>
-                    <Path
-                      d="M 30 30 L 30 5 A 25 25 0 0 1 47.5 12.5 Z"
-                      fill="#007AFF"
-                      fillOpacity={0.3}
-                      stroke="#007AFF"
-                      strokeWidth="1"
-                      strokeOpacity={0.5}
-                    />
-                  </Svg>
-                </View>
-              )}
-              {/* メインの青いドット */}
-              <View style={styles.locationDot}>
-                <View style={styles.innerDot} />
-              </View>
+              <Svg width="60" height="60" viewBox="0 0 60 60">
+                {/* 方向を示す扇形（SVG内でtransformを処理） */}
+                {userLocation.coords.heading !== null && (
+                  <Path
+                    d="M 30 30 L 30 5 A 25 25 0 0 1 47.5 12.5 Z"
+                    fill="#007AFF"
+                    fillOpacity={0.3}
+                    stroke="#007AFF"
+                    strokeWidth="1"
+                    strokeOpacity={0.5}
+                    transform={`rotate(${userLocation.coords.heading} 30 30)`}
+                  />
+                )}
+                
+                {/* 外側の白い円（影を作る） */}
+                <Circle
+                  cx="30"
+                  cy="30"
+                  r="13"
+                  fill="white"
+                />
+                
+                {/* メインの青い円 */}
+                <Circle
+                  cx="30"
+                  cy="30"
+                  r="10"
+                  fill="#007AFF"
+                  stroke="white"
+                  strokeWidth="3"
+                />
+                
+                {/* 内側の白い円 */}
+                <Circle
+                  cx="30"
+                  cy="30"
+                  r="4"
+                  fill="white"
+                />
+              </Svg>
             </View>
           </Marker>
         )}
@@ -74,46 +115,10 @@ export const MapContainer = forwardRef<MapView, MapContainerProps>(
 
 const styles = StyleSheet.create({
   map: {
-    flex: 1,
+    ...StyleSheet.absoluteFillObject,
   },
   markerContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
     width: 60,
     height: 60,
-  },
-  headingIndicator: {
-    position: 'absolute',
-    width: 60,
-    height: 60,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  fanShape: {
-    position: 'absolute',
-  },
-  locationDot: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: '#007AFF',
-    borderWidth: 3,
-    borderColor: '#fff',
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-    elevation: 5,
-    zIndex: 2,
-  },
-  innerDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#fff',
   },
 }); 
