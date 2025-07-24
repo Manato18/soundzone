@@ -1,8 +1,8 @@
 import { create } from 'zustand';
 import { devtools, persist, subscribeWithSelector } from 'zustand/middleware';
 import { immer } from 'zustand/middleware/immer';
-import { UserLocationData, LocationError } from '../domain/entities/Location';
 import { storage } from '../../../shared/infra/storage/mmkvStorage';
+import { LocationError, UserLocationData } from '../domain/entities/Location';
 
 /**
  * 位置情報状態の型定義
