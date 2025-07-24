@@ -1,7 +1,7 @@
 import React, { ReactNode, forwardRef } from 'react';
 import { StyleSheet, View } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
-import Svg, { Path, Circle } from 'react-native-svg';
+import Svg, { Circle, Path } from 'react-native-svg';
 import { UserLocationData } from '../../../location/domain/entities/Location';
 import { MapRegion } from '../../domain/entities/MapRegion';
 
@@ -14,17 +14,6 @@ interface MapContainerProps {
 
 export const MapContainer = forwardRef<MapView, MapContainerProps>(
   ({ region, onRegionChange, userLocation, children }, ref) => {
-    // デバッグ用：位置情報の変化を監視
-    React.useEffect(() => {
-      if (userLocation?.coords) {
-        console.log('Location update:', {
-          lat: userLocation.coords.latitude,
-          lng: userLocation.coords.longitude,
-          heading: userLocation.coords.heading,
-        });
-      }
-    }, [userLocation]);
-    
     return (
       <MapView
         ref={ref}

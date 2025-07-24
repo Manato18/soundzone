@@ -1,36 +1,36 @@
+import { useMutation, UseMutationOptions, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef } from 'react';
-import { useMutation, useQuery, useQueryClient, UseMutationOptions } from '@tanstack/react-query';
 import { queryKeys } from '../../../../shared/presenter/queries/queryClient';
-import { authService, AuthResult, SignUpResult } from '../../infrastructure/auth-service';
-import { QueryUser } from '../../domain/entities/User';
 import {
+  useAuthSettings,
   useAuthUser,
+  useClearEmailVerificationForm,
+  useClearLoginForm,
+  useClearSignUpForm,
+  useDecrementResendCooldown,
+  useEmailVerification,
+  useHideEmailVerificationModal,
   useIsAuthenticated,
   useLoginForm,
-  useSignUpForm,
-  useEmailVerification,
-  useAuthSettings,
-  useSetUser,
-  useUpdateLoginForm,
+  useReset,
+  useSetLastLoginEmail,
   useSetLoginError,
-  useClearLoginForm,
   useSetLoginSubmitting,
-  useUpdateSignUpForm,
+  useSetResending,
   useSetSignUpError,
-  useClearSignUpForm,
   useSetSignUpSubmitting,
+  useSetUser,
   useSetVerificationCode,
   useSetVerificationError,
   useSetVerificationSubmitting,
-  useSetResending,
-  useStartResendCooldown,
-  useDecrementResendCooldown,
-  useClearEmailVerificationForm,
   useShowEmailVerificationModal,
-  useHideEmailVerificationModal,
-  useReset,
-  useSetLastLoginEmail,
+  useSignUpForm,
+  useStartResendCooldown,
+  useUpdateLoginForm,
+  useUpdateSignUpForm,
 } from '../../application/auth-store';
+import { QueryUser } from '../../domain/entities/User';
+import { AuthResult, authService, SignUpResult } from '../../infrastructure/auth-service';
 
 // Presentation Layer: UI向けのHookと TanStack Query
 
@@ -38,7 +38,7 @@ import {
 export const useCurrentUserQuery = () => {
   const setUser = useSetUser();
   
-  return useQuery({
+  const query = useQuery({
     queryKey: queryKeys.auth.user(),
     queryFn: async () => {
       const user = await authService.getCurrentUser();
@@ -48,12 +48,17 @@ export const useCurrentUserQuery = () => {
     staleTime: 5 * 60 * 1000, // 5分キャッシュ
     refetchOnMount: true,
     refetchOnWindowFocus: false,
-    // エラーハンドリング
-    onError: (error) => {
-      console.error('Failed to fetch current user:', error);
-      setUser(null);
-    },
   });
+
+  // エラーハンドリングはuseEffectで処理
+  useEffect(() => {
+    if (query.error) {
+      console.error('Failed to fetch current user:', query.error);
+      setUser(null);
+    }
+  }, [query.error, setUser]);
+
+  return query;
 };
 
 // === ミューテーション ===
@@ -206,6 +211,8 @@ export const useAuth = () => {
   const isAuthenticated = useIsAuthenticated();
   const settings = useAuthSettings();
   const { isLoading } = useCurrentUserQuery();
+  const reset = useReset();
+  const queryClient = useQueryClient();
 
   const signInMutation = useSignInMutation();
   const signUpMutation = useSignUpMutation();
@@ -242,9 +249,15 @@ export const useAuth = () => {
     } catch (error) {
       console.error('Sign out error:', error);
       // サインアウトは失敗してもローカル状態をクリアする
-      signOutMutation.onSuccess?.();
+      // フォールバックとして手動でリセット処理を実行
+      reset();
+      queryClient.setQueryData(queryKeys.auth.user(), null);
+      queryClient.removeQueries({ queryKey: queryKeys.auth.all });
+      queryClient.invalidateQueries({ 
+        predicate: (query) => query.queryKey[0] !== 'auth' 
+      });
     }
-  }, [signOutMutation]);
+  }, [signOutMutation, reset, queryClient]);
 
   return {
     // 状態

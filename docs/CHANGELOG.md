@@ -1,5 +1,159 @@
 # SoundZone - 変更履歴
 
+## [TypeScript Error Fix] - 2025-01-24 - 🔧 TanStack Query v5対応とTypeScriptエラー修正
+
+### TanStack Query v5への移行対応
+プロジェクトのTypeScriptコンパイルエラーを修正し、TanStack Query v5との互換性を確保しました。
+
+#### **🚨 発生していたエラー**
+
+1. **useQueryのonErrorコールバック削除エラー**
+   ```typescript
+   // エラー内容
+   src/features/auth/presentation/hooks/use-auth.ts:52:5 - error TS2769: 
+   No overload matches this call.
+   Object literal may only specify known properties, 
+   and 'onError' does not exist in type 'UndefinedInitialDataOptions'
+   ```
+
+2. **UseMutationResultのonSuccessプロパティアクセスエラー** 
+   ```typescript
+   // エラー内容
+   src/features/auth/presentation/hooks/use-auth.ts:245:23 - error TS2339: 
+   Property 'onSuccess' does not exist on type 'UseMutationResult<void, Error, void, unknown>'
+   ```
+
+3. **暗黙的any型エラー**
+   ```typescript
+   // エラー内容
+   src/features/auth/presentation/hooks/use-auth.ts:52:15 - error TS7006: 
+   Parameter 'error' implicitly has an 'any' type.
+   ```
+
+4. **位置情報の型エラー**
+   ```typescript
+   // エラー内容  
+   src/features/location/presentation/hooks/useLocation.ts:144:13 - error TS2322: 
+   Type 'number | undefined' is not assignable to type 'number | null'.
+   Type 'undefined' is not assignable to type 'number | null'.
+   ```
+
+#### **🔧 実施した修正**
+
+##### 1. useQueryのエラーハンドリング変更
+**修正前:**
+```typescript
+return useQuery({
+  queryKey: queryKeys.auth.user(),
+  queryFn: async () => {
+    const user = await authService.getCurrentUser();
+    setUser(user);
+    return user;
+  },
+  onError: (error) => {
+    console.error('Failed to fetch current user:', error);
+    setUser(null);
+  },
+});
+```
+
+**修正後:**
+```typescript
+const query = useQuery({
+  queryKey: queryKeys.auth.user(),
+  queryFn: async () => {
+    const user = await authService.getCurrentUser();
+    setUser(user);
+    return user;
+  },
+  staleTime: 5 * 60 * 1000,
+  refetchOnMount: true,
+  refetchOnWindowFocus: false,
+});
+
+// エラーハンドリングはuseEffectで処理
+useEffect(() => {
+  if (query.error) {
+    console.error('Failed to fetch current user:', query.error);
+    setUser(null);
+  }
+}, [query.error, setUser]);
+
+return query;
+```
+
+##### 2. Mutationのエラーハンドリング修正
+**修正前:**
+```typescript
+const signOut = useCallback(async () => {
+  try {
+    await signOutMutation.mutateAsync();
+  } catch (error) {
+    console.error('Sign out error:', error);
+    // サインアウトは失敗してもローカル状態をクリアする
+    signOutMutation.onSuccess?.(); // ❌ onSuccessプロパティは存在しない
+  }
+}, [signOutMutation]);
+```
+
+**修正後:**
+```typescript
+const signOut = useCallback(async () => {
+  try {
+    await signOutMutation.mutateAsync();
+  } catch (error) {
+    console.error('Sign out error:', error);
+    // サインアウトは失敗してもローカル状態をクリアする
+    // フォールバックとして手動でリセット処理を実行
+    reset();
+    queryClient.setQueryData(queryKeys.auth.user(), null);
+    queryClient.removeQueries({ queryKey: queryKeys.auth.all });
+    queryClient.invalidateQueries({ 
+      predicate: (query) => query.queryKey[0] !== 'auth' 
+    });
+  }
+}, [signOutMutation, reset, queryClient]);
+```
+
+##### 3. 位置情報の型安全性向上
+**修正前:**
+```typescript
+if (newLocation.coords.heading === null && currentHeading !== null) {
+  newLocation.coords.heading = currentHeading; // ❌ undefined をnull型に代入
+}
+```
+
+**修正後:**
+```typescript
+if (newLocation.coords.heading === null && currentHeading !== null && currentHeading !== undefined) {
+  newLocation.coords.heading = currentHeading; // ✅ undefinedをチェック
+}
+```
+
+#### **📚 参考ドキュメント**
+- [TanStack Query v5 Migration Guide](https://tanstack.com/query/v5/docs/framework/react/guides/migrating-to-v5)
+- **主要な変更点:**
+  - `onError`、`onSuccess`、`onSettled`が`useQuery`から削除
+  - Mutationの結果オブジェクトから`onSuccess`プロパティが削除
+  - エラーハンドリングは`useEffect`を使用することが推奨
+
+#### **✅ 修正結果**
+- TypeScriptコンパイルエラー: **4件 → 0件**
+- `npx tsc --noEmit`が正常に完了
+- TanStack Query v5との完全互換性を確保
+- 適切なエラーハンドリングパターンの実装
+
+#### **🎯 技術的改善点**
+- **React Hooks Rules準拠**: コールバック内でのHooks呼び出しを回避
+- **型安全性の向上**: undefined/null型の適切な処理
+- **エラーハンドリングの標準化**: useEffectパターンによる一貫性確保
+- **将来性の確保**: TanStack Query最新版への対応完了
+
+### 影響範囲
+- **認証機能**: エラーハンドリングの改善、サインアウト処理の堅牢性向上
+- **位置情報機能**: 型安全性の向上、heading情報の適切な処理
+- **破壊的変更**: なし（既存の機能は正常動作）
+
 ## [StateManagement] - 2025-01-24 - 🔄 Layers機能の状態管理移行
 
 ### Layers機能のZustand/TanStack Query移行完了
