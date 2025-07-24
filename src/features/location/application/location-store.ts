@@ -193,15 +193,19 @@ export const useCurrentLocation = () =>
 /**
  * 位置情報関連のUI状態を取得
  */
-export const useLocationUIState = () => 
-  useLocationStore(
-    (state) => ({
-      isLoading: state.isLoading,
-      error: state.error,
-      isLocationEnabled: state.isLocationEnabled,
-      isTracking: state.isTracking,
-    })
-  );
+export const useLocationUIState = () => {
+  const isLoading = useLocationStore((state) => state.isLoading);
+  const error = useLocationStore((state) => state.error);
+  const isLocationEnabled = useLocationStore((state) => state.isLocationEnabled);
+  const isTracking = useLocationStore((state) => state.isTracking);
+  
+  return {
+    isLoading,
+    error,
+    isLocationEnabled,
+    isTracking,
+  };
+};
 
 /**
  * 位置情報設定を取得
@@ -236,18 +240,28 @@ export const useIsLocationTracking = () =>
 /**
  * 位置情報関連のアクションを取得
  */
-export const useLocationActions = () => 
-  useLocationStore(
-    (state) => ({
-      setCurrentLocation: state.setCurrentLocation,
-      setIsLoading: state.setIsLoading,
-      setError: state.setError,
-      setIsLocationEnabled: state.setIsLocationEnabled,
-      setIsTracking: state.setIsTracking,
-      updateLocationSettings: state.updateLocationSettings,
-      startLocationTracking: state.startLocationTracking,
-      stopLocationTracking: state.stopLocationTracking,
-      handleLocationError: state.handleLocationError,
-      resetLocationState: state.resetLocationState,
-    })
-  );
+export const useLocationActions = () => {
+  const setCurrentLocation = useLocationStore((state) => state.setCurrentLocation);
+  const setIsLoading = useLocationStore((state) => state.setIsLoading);
+  const setError = useLocationStore((state) => state.setError);
+  const setIsLocationEnabled = useLocationStore((state) => state.setIsLocationEnabled);
+  const setIsTracking = useLocationStore((state) => state.setIsTracking);
+  const updateLocationSettings = useLocationStore((state) => state.updateLocationSettings);
+  const startLocationTracking = useLocationStore((state) => state.startLocationTracking);
+  const stopLocationTracking = useLocationStore((state) => state.stopLocationTracking);
+  const handleLocationError = useLocationStore((state) => state.handleLocationError);
+  const resetLocationState = useLocationStore((state) => state.resetLocationState);
+  
+  return {
+    setCurrentLocation,
+    setIsLoading,
+    setError,
+    setIsLocationEnabled,
+    setIsTracking,
+    updateLocationSettings,
+    startLocationTracking,
+    stopLocationTracking,
+    handleLocationError,
+    resetLocationState,
+  };
+};

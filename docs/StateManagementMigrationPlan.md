@@ -184,33 +184,53 @@ interface MapState {
 - map-store.test.tsの作成
 - TypeScriptエラーの解消
 
-### 3.4 Phase 4: audioPin機能の移行（推定工数: 3-4日）
+### 3.4 Phase 4: audioPin機能の移行（✅ 完了: 2025-07-24）
 
-#### Step 4-1: audioPin-store.tsの作成
+#### Step 4-1: audioPin-store.tsの作成 ✅
 ```typescript
 // src/features/audioPin/application/audioPin-store.ts
 interface AudioPinState {
-  // サーバー状態
-  pins: AudioPin[];
-  
   // UI状態
   selectedPin: AudioPin | null;
   isModalVisible: boolean;
+  playbackState: AudioPlaybackState;
   playingPinId: string | null;
   
-  // フィルター状態
-  filteredPins: AudioPin[];
+  // 設定（永続化対象）
+  settings: {
+    autoPlayOnPinTap: boolean;
+    playbackSpeed: number;
+    showPinDetails: boolean;
+    volume: number;
+  };
 }
 ```
 
-#### Step 4-2: TanStack Queryの導入
+#### Step 4-2: TanStack Queryの導入 ✅
 - useAudioPinsQuery: ピン一覧の取得
-- useCreatePinMutation: ピンの作成
-- useUpdatePinMutation: ピンの更新
+- useAudioPinQuery: 単一ピンの取得
+- useCreateAudioPinMutation: ピンの作成
+- useUpdateAudioPinMutation: ピンの更新
+- useDeleteAudioPinMutation: ピンの削除
 
-#### Step 4-3: infrastructure層の実装
+#### Step 4-3: infrastructure層の実装 ✅
 - audioPin-service.tsの作成
-- 音声ファイルのアップロード処理
+- モックAPIの実装
+- 将来的なSupabase連携を想定した設計
+
+#### 追加実装内容:
+1. **読み書き機能の分離** ✅
+   - read/ディレクトリ: クエリフック
+   - write/ディレクトリ: ミューテーションフック
+   
+2. **再生管理機能** ✅
+   - 再生状態の管理
+   - 音量コントロール
+   - シーク機能
+   
+3. **既存コンポーネントとの統合** ✅
+   - HomeScreenの更新
+   - レイヤーフィルタリングとの連携
 
 ## 4. 共通作業
 
@@ -301,8 +321,8 @@ npm list zustand @tanstack/react-query react-native-mmkv
 | Phase 1 | location機能 | 2-3日 | 1日 | ✅ 完了 |
 | Phase 2 | layers機能 | 2-3日 | 0.5日 | ✅ 完了 |
 | Phase 3 | map機能 | 1-2日 | 0.5日 | ✅ 完了 |
-| Phase 4 | audioPin機能 | 3-4日 | - | 🔄 次の作業 |
-| 最終確認 | 統合テスト・調整 | 1日 | - | ⏳ 待機中 |
+| Phase 4 | audioPin機能 | 3-4日 | 0.5日 | ✅ 完了 |
+| 最終確認 | 統合テスト・調整 | 1日 | - | 🔄 次の作業 |
 
 ## 9. 成功指標
 

@@ -35,12 +35,12 @@ export const MapContainer = forwardRef<MapView, MapContainerProps>(
       stopFollowing();
       onRegionChange(newRegion);
       
-      // if (__DEV__) {
-      //   console.log(`[MapContainer] 地図手動操作（追従停止）:`, {
-      //     lat: newRegion.latitude.toFixed(6),
-      //     lng: newRegion.longitude.toFixed(6),
-      //   });
-      // }
+      if (__DEV__) {
+        console.log(`[MapContainer] 地図手動操作（追従停止）:`, {
+          lat: newRegion.latitude.toFixed(6),
+          lng: newRegion.longitude.toFixed(6),
+        });
+      }
     };
 
     return (

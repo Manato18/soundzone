@@ -74,3 +74,17 @@ export const StorageKeys = {
   BIOMETRIC_ENABLED: 'biometric_enabled',
   AUTO_LOGIN_ENABLED: 'auto_login_enabled',
 } as const;
+
+// Zustand persist middleware用のアダプター
+export const mmkvStorage = {
+  getItem: (name: string) => {
+    const value = storage.getString(name);
+    return value ? JSON.parse(value) : null;
+  },
+  setItem: (name: string, value: unknown) => {
+    storage.set(name, JSON.stringify(value));
+  },
+  removeItem: (name: string) => {
+    storage.delete(name);
+  },
+};

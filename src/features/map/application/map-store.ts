@@ -97,9 +97,9 @@ export const useMapStore = create<MapState>()(
         
         setIsFollowingUser: (isFollowing) => set((state) => {
           state.isFollowingUser = isFollowing;
-          // if (__DEV__) {
-          //   console.log(`[MapStore] 追従モード: ${isFollowing ? 'ON' : 'OFF'}`);
-          // }
+          if (__DEV__) {
+            console.log(`[MapStore] 追従モード: ${isFollowing ? 'ON' : 'OFF'}`);
+          }
         }),
         
         updateMapType: (mapType) => set((state) => {

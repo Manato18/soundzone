@@ -31,6 +31,13 @@ export const StorageKeys = {
     SHOW_USER_LOCATION: 'map-show-user-location',
   },
   
+  // 音声ピン関連
+  AUDIO_PIN: {
+    SETTINGS: 'audio-pin-settings',
+    PLAYBACK_SPEED: 'audio-pin-playback-speed',
+    AUTO_PLAY: 'audio-pin-auto-play',
+  },
+  
   // アプリ全般
   APP: {
     FIRST_LAUNCH: 'app-first-launch',
@@ -49,4 +56,5 @@ export type StorageKey =
   | StorageKeyValue<'LOCATION'>
   | StorageKeyValue<'LAYERS'>
   | StorageKeyValue<'MAP'>
+  | StorageKeyValue<'AUDIO_PIN'>
   | StorageKeyValue<'APP'>;
