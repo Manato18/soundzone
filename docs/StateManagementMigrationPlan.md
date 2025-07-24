@@ -114,9 +114,9 @@ interface LocationState {
    - 前回値の保持機能
    - チカチカ防止の実装
 
-### 3.2 Phase 2: layers機能の移行（推定工数: 2-3日）
+### 3.2 Phase 2: layers機能の移行（✅ 完了: 2025-07-24）
 
-#### Step 2-1: layers-store.tsの作成
+#### Step 2-1: layers-store.tsの作成 ✅
 ```typescript
 // src/features/layers/application/layers-store.ts
 interface LayersState {
@@ -126,20 +126,28 @@ interface LayersState {
   // UI状態
   selectedLayerIds: string[];
   isLoading: boolean;
+  error: string | null;
   
   // 設定（永続化対象）
-  favoriteLayerIds: string[];
-  defaultLayerIds: string[];
+  settings: {
+    favoriteLayerIds: string[];
+    defaultLayerIds: string[];
+    showAllByDefault: boolean;
+  };
 }
 ```
 
-#### Step 2-2: TanStack Queryの導入
+#### Step 2-2: TanStack Queryの導入 ✅
 - useLayersQuery: レイヤー一覧の取得
-- useLayerMutation: レイヤーの作成/更新
+- useUserLayerPreferencesQuery: ユーザー設定の取得
+- useSaveUserLayerPreferencesMutation: ユーザー設定の保存
+- useCreateLayerMutation: カスタムレイヤーの作成
+- useUpdateLayerMutation: レイヤーの更新
+- useDeleteLayerMutation: レイヤーの削除
 
-#### Step 2-3: infrastructure層の実装
+#### Step 2-3: infrastructure層の実装 ✅
 - layers-service.tsの作成
-- Supabase連携の実装
+- 将来的なSupabase連携を想定した設計
 
 ### 3.3 Phase 3: map機能の移行（推定工数: 1-2日）
 
@@ -276,8 +284,8 @@ npm list zustand @tanstack/react-query react-native-mmkv
 |---------|----------|----------|------|------|
 | Phase 0 | 開発環境整備 | 1日 | 0.5日 | ✅ 完了 |
 | Phase 1 | location機能 | 2-3日 | 1日 | ✅ 完了 |
-| Phase 2 | layers機能 | 2-3日 | - | 🔄 次の作業 |
-| Phase 3 | map機能 | 1-2日 | - | ⏳ 待機中 |
+| Phase 2 | layers機能 | 2-3日 | 0.5日 | ✅ 完了 |
+| Phase 3 | map機能 | 1-2日 | - | 🔄 次の作業 |
 | Phase 4 | audioPin機能 | 3-4日 | - | ⏳ 待機中 |
 | 最終確認 | 統合テスト・調整 | 1日 | - | ⏳ 待機中 |
 
@@ -314,11 +322,26 @@ npm list zustand @tanstack/react-query react-native-mmkv
    - null値の適切な処理で安定表示
    - 前回値の保持でチカチカ防止
 
-### 10.2 関連ドキュメント
+### 10.2 layers機能の実装で得られた知見
+
+1. **スムーズな移行**
+   - 既存のインターフェースを維持したため、破壊的変更なし
+   - UIコンポーネントの変更不要
+
+2. **型安全性の向上**
+   - persist部分の型を明示的に定義
+   - セレクターによる型推論の改善
+
+3. **拡張性の確保**
+   - Supabase連携を想定したサービス層の設計
+   - TanStack Queryによるサーバー状態管理の準備
+
+### 10.3 関連ドキュメント
 
 - [LocationMigrationSummary.md](./LocationMigrationSummary.md) - location機能の移行まとめ
 - [HeadingFeatureImplementation.md](./HeadingFeatureImplementation.md) - 方向表示機能の実装詳細
 - [IndependentHeadingUpdate.md](./IndependentHeadingUpdate.md) - 独立した方向更新の実装
+- [LayersMigrationSummary.md](./LayersMigrationSummary.md) - layers機能の移行まとめ
 
 ---
 

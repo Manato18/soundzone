@@ -1,65 +1,180 @@
 # SoundZone - 変更履歴
 
-## [Feature] - 2025-01-24 - 🧭 ユーザー方向表示機能の実装
+## [StateManagement] - 2025-01-24 - 🔄 Layers機能の状態管理移行
 
-### 地図上でのユーザー方向表示機能追加
-ホーム画面の地図上で、ユーザーの現在位置に加えて**向いている方向（heading）**を扇形で表示する機能を実装しました。
-
-#### **🔧 変更ファイル**
-- **`/src/features/map/presentation/components/MapContainer.tsx`**: 方向表示機能追加
-  - react-native-svgを使用した扇形の方向表示を実装
-  - 45度の扇形を半透明青色（#007AFF、opacity: 0.3）で描画
-  - headingデータがnullでない場合のみ表示する条件付きレンダリング
-  - 現在位置マーカーとz-index制御による重ね順調整
-
-#### **📦 新規依存関係**
-- **react-native-svg**: SVGを使用した扇形描画のためのライブラリ追加
-
-#### **🎨 デザインの特徴**
-- **視認性**: 半透明で地図コンテンツを隠さない設計
-- **一貫性**: 現在位置マーカーと同色（#007AFF）を使用
-- **サイズ**: 60x60コンテナで適度な大きさ
-- **角度**: 45度扇形で方向を明確に表示
-
-### 技術的実装詳細
-- **扇形描画**: SVG Pathを使用した北基準（0度）からの回転
-- **方向適用**: headingの値（0-360度）をCSS transform rotateで適用
-- **条件分岐**: デバイスが方向情報を提供できない場合の対応
-- **実機対応**: シミュレーターではheading取得不可、実機テスト推奨
-
-### 今後の改善案
-扇形角度のカスタマイズ、色の設定機能、方向変更時のアニメーション、heading精度の視覚表現を計画中。
-
----
-
-## [StateManagement] - 2025-01-24 - 🔄 Location機能の状態管理移行
-
-### Location機能のZustand/MMKV移行完了
-StateManagement.mdで定義した規約に従い、Location機能の状態管理を従来のReact標準状態からZustand+MMKV構成に移行しました。
+### Layers機能のZustand/TanStack Query移行完了
+StateManagement.mdで定義した規約に従い、Layers機能の状態管理をReact標準のuseStateからZustand + TanStack Queryによる構成に移行しました。
 
 #### **📁 新規作成ファイル**
-- **`/src/constants/StorageKeys.ts`**: MMKV永続化キーの集約管理
-  - 型安全性を確保するための型定義を追加
-- **`/src/features/location/application/location-store.ts`**: Zustand状態管理ストア
-  - サーバー状態（currentLocation）、UI状態（isLoading, error, isLocationEnabled, isTracking）、設定（永続化対象）の分離管理
-  - middleware順序: `devtools → persist → immer → subscribeWithSelector`
-  - 設定のみをMMKV永続化、大きなデータは永続化しない設計
-- **`/src/features/location/application/__tests__/location-store.test.ts`**: 基本テストケース実装
+- **`/src/features/layers/application/layers-store.ts`**: Zustandストアの実装
+  - UI状態（選択レイヤー、ローディング、エラー）の管理
+  - 設定（お気に入り、デフォルトレイヤー）の永続化
+  - immer、persist（MMKV）、devtoolsミドルウェアの適用
+- **`/src/features/layers/infrastructure/layers-service.ts`**: レイヤーデータのAPI/データアクセスサービス
+  - 現在は固定データを返すが、将来的なSupabase連携を想定した設計
+  - ユーザー設定の保存/取得メソッドの実装
+- **`/src/features/layers/presentation/hooks/use-layers-query.ts`**: TanStack Queryフックの実装
+  - レイヤー一覧取得、ユーザー設定管理のクエリ
+  - カスタムレイヤーの作成/更新/削除用ミューテーション
+- **`/src/features/layers/application/__tests__/layers-store.test.ts`**: Zustandストアのユニットテスト
+  - レイヤー選択、お気に入り、設定管理のテスト
 
 #### **🔧 更新ファイル**
-- **`/src/features/location/presentation/hooks/useLocation.ts`**: 内部実装移行
-  - React標準のuseStateからZustandストアへの切り替え
-  - 既存インターフェース維持による破壊的変更の回避
+- **`/src/constants/StorageKeys.ts`**: `LAYERS.SETTINGS`キーを追加
+- **`/src/features/layers/presentation/hooks/useLayerSelection.ts`**: 内部実装をZustandストアを使用するように変更
+  - 既存のインターフェースを維持（破壊的変更なし）
+  - TanStack Queryフックを統合
 
-#### **📊 状態分類の明確化**
-- **UI状態**: ローカル一時的状態（isLoading, error, isLocationEnabled, isTracking）
-- **サーバー状態**: API連携予定状態（currentLocation）
-- **永続化状態**: アプリ再起動後保持設定（locationUpdateInterval, highAccuracyMode, distanceFilter）
+#### **📊 アーキテクチャの改善点**
+- **レイヤー分離**: presentation、application、infrastructure、domain層の明確な責務分離
+- **状態管理の分離**: 
+  - **Ephemeral UI state**: Zustandで管理（selectedLayerIds、isLoading、error）
+  - **Remote server state**: TanStack Queryで管理（availableLayers）
+  - **Persistent client state**: MMKVで永続化（settings、selectedLayerIds）
+
+#### **🎯 主な機能**
+- **レイヤー選択**: 個別レイヤーのトグル、全レイヤーの一括選択/解除、選択状態の永続化
+- **お気に入り機能**: お気に入りレイヤーの管理、設定の永続化
+- **デフォルト設定**: デフォルトレイヤーの設定、初期表示時の自動選択
+
+#### **🔮 将来の拡張性**
+- **Supabase連携**: layers-service.tsでAPIエンドポイントを実装するだけで対応可能
+- **カスタムレイヤー**: 作成/更新/削除のミューテーションフックは実装済み
+- **リアルタイム同期**: Supabase Realtimeとの連携準備完了
+
+#### **⚡ パフォーマンス最適化**
+- shallow比較によるセレクター最適化
+- メモ化によるレンダリング最小化
+- 永続化データの部分保存（partialize）
 
 ### 技術的改善点
-- **破壊的変更なし**: HomeScreen.tsxなど既存コンポーネントは変更不要
+- **破壊的変更なし**: 既存のコンポーネントはそのまま動作
 - **型安全性**: TypeScript型チェック完全対応
-- **lintエラー修正**: 未使用変数削除、インポート整理
+- **テストカバレッジ**: ユニットテストの実装
+
+## 概要
+
+layers機能を`StateManagement.md`の規約に従い、React標準のuseStateからZustand + TanStack Queryによる状態管理に移行しました。
+
+## 実装内容
+
+### 1. 作成したファイル
+
+#### 1.1 application層
+- **layers-store.ts**
+  - Zustandストアの実装
+  - UI状態（選択レイヤー、ローディング、エラー）の管理
+  - 設定（お気に入り、デフォルトレイヤー）の永続化
+  - immer、persist（MMKV）、devtoolsミドルウェアの適用
+
+#### 1.2 infrastructure層
+- **layers-service.ts**
+  - レイヤーデータのAPI/データアクセスサービス
+  - 現在は固定データを返すが、将来的なSupabase連携を想定した設計
+  - ユーザー設定の保存/取得メソッドの実装
+
+#### 1.3 presentation層
+- **use-layers-query.ts**
+  - TanStack Queryフックの実装
+  - レイヤー一覧取得、ユーザー設定管理のクエリ
+  - カスタムレイヤーの作成/更新/削除用ミューテーション
+
+#### 1.4 テスト
+- **layers-store.test.ts**
+  - Zustandストアのユニットテスト
+  - レイヤー選択、お気に入り、設定管理のテスト
+
+### 2. 更新したファイル
+
+#### 2.1 StorageKeys.ts
+- `LAYERS.SETTINGS`キーを追加
+
+#### 2.2 useLayerSelection.ts
+- 内部実装をZustandストアを使用するように変更
+- 既存のインターフェースを維持（破壊的変更なし）
+- TanStack Queryフックを統合
+
+### 3. アーキテクチャの改善点
+
+#### 3.1 レイヤー分離
+```
+presentation/
+  ├── hooks/
+  │   ├── useLayerSelection.ts    # UIとの接点
+  │   └── use-layers-query.ts     # サーバー状態管理
+  ├── components/                  # UIコンポーネント（変更なし）
+  └── LayersScreen.tsx            # 画面（変更なし）
+
+application/
+  └── layers-store.ts             # アプリケーション状態管理
+
+infrastructure/
+  └── layers-service.ts           # API/データアクセス
+
+domain/
+  ├── entities/
+  │   └── Layer.ts               # エンティティ定義（変更なし）
+  └── utils/
+      └── layerUtils.ts          # ユーティリティ（変更なし）
+```
+
+#### 3.2 状態管理の分離
+- **Ephemeral UI state**: Zustandで管理（selectedLayerIds、isLoading、error）
+- **Remote server state**: TanStack Queryで管理（availableLayers）
+- **Persistent client state**: MMKVで永続化（settings、selectedLayerIds）
+
+### 4. 主な機能
+
+#### 4.1 レイヤー選択
+- 個別レイヤーのトグル
+- 全レイヤーの一括選択/解除
+- 選択状態の永続化
+
+#### 4.2 お気に入り機能
+- お気に入りレイヤーの管理
+- 設定の永続化
+
+#### 4.3 デフォルト設定
+- デフォルトレイヤーの設定
+- 初期表示時の自動選択
+
+### 5. 将来の拡張性
+
+#### 5.1 Supabase連携
+- layers-service.tsでAPIエンドポイントを実装するだけで対応可能
+- TanStack Queryのキャッシュ戦略は既に実装済み
+
+#### 5.2 カスタムレイヤー
+- 作成/更新/削除のミューテーションフックは実装済み
+- UIの追加のみで機能拡張可能
+
+#### 5.3 リアルタイム同期
+- Supabase Realtimeとの連携準備完了
+- queryClient.invalidateQueriesで更新通知可能
+
+### 6. パフォーマンス最適化
+
+- shallow比較によるセレクター最適化
+- メモ化によるレンダリング最小化
+- 永続化データの部分保存（partialize）
+
+### 7. 破壊的変更
+
+なし。既存のコンポーネントはそのまま動作します。
+
+### 8. 次のステップ
+
+1. 実機での動作確認
+2. Supabase APIとの連携実装（必要に応じて）
+3. カスタムレイヤー機能のUI実装（必要に応じて）
+
+## 関連ドキュメント
+
+- [StateManagement.md](./StateManagement.md) - 状態管理規約
+- [StateManagementMigrationPlan.md](./StateManagementMigrationPlan.md) - 全体の移行計画
+
 
 ### 次のステップ
-StateManagementMigrationPlan.mdに従い、次はlayers機能の移行を実施予定。パフォーマンス最適化（shallow比較、セレクター最適化）、機能拡張（位置情報履歴、バックグラウンド追跡）、テスト拡充（統合・E2Eテスト）も計画中。
+実機での動作確認、Supabase APIとの連携実装（必要に応じて）、カスタムレイヤー機能のUI実装（必要に応じて）を計画中。
+
+---
