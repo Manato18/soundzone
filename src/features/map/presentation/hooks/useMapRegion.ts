@@ -1,17 +1,12 @@
-import { useState } from 'react';
-import { MapRegion } from '../../domain/entities/MapRegion';
+import { useMapStore } from '../../application/map-store';
 
+/**
+ * 地図のリージョン管理フック
+ * 既存のインターフェースを維持しながら、内部でZustandストアを使用
+ */
 export const useMapRegion = () => {
-  const [region, setRegion] = useState<MapRegion>({
-    latitude: 35.0116, // 京都を初期表示
-    longitude: 135.7681,
-    latitudeDelta: 0.05,
-    longitudeDelta: 0.05,
-  });
-
-  const updateRegion = (newRegion: MapRegion) => {
-    setRegion(newRegion);
-  };
+  const region = useMapStore((state) => state.region);
+  const updateRegion = useMapStore((state) => state.updateRegion);
 
   return {
     region,

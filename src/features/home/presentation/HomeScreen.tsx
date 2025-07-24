@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, View, Text } from 'react-native';
 import MapView from 'react-native-maps';
 import AudioPlayerModal from '../../../../components/AudioPlayerModal';
 import { AudioPinMarkers } from '../../audioPin/presentation/components/AudioPinMarkers';
@@ -11,6 +11,8 @@ import { useLocation } from '../../location/presentation/hooks/useLocation';
 import { LocationButton } from '../../map/presentation/components/LocationButton';
 import { MapContainer } from '../../map/presentation/components/MapContainer';
 import { useMapRegion } from '../../map/presentation/hooks/useMapRegion';
+import { useMapWithLocation } from '../../map/presentation/hooks/useMapWithLocation';
+import { useMapFollowing } from '../../map/presentation/hooks/useMapFollowing';
 import { ErrorDisplay } from './components/ErrorDisplay';
 
 export default function HomeScreen() {
@@ -20,6 +22,8 @@ export default function HomeScreen() {
   const { location, errorMsg } = useLocation();
   const { audioPins, selectedAudio, modalVisible, handlePinPress, handleCloseModal } = useAudioPins();
   const { region, updateRegion } = useMapRegion();
+  const { centerOnUserLocation } = useMapWithLocation(mapRef);
+  const { isFollowingUser } = useMapFollowing();
   
   // 最後の有効な位置情報を保持（チカチカ防止）
   const [stableLocation, setStableLocation] = useState(location);
@@ -43,21 +47,6 @@ export default function HomeScreen() {
     pins: audioPins,
     selectedLayerIds: getSelectedLayerIds(),
   });
-
-  // 現在位置を中心に戻すハンドラー
-  const centerOnUserLocation = () => {
-    if (stableLocation && mapRef.current) {
-      const newRegion = {
-        latitude: stableLocation.coords.latitude,
-        longitude: stableLocation.coords.longitude,
-        latitudeDelta: region.latitudeDelta,
-        longitudeDelta: region.longitudeDelta,
-      };
-      
-      mapRef.current.animateToRegion(newRegion, 1000);
-      updateRegion(newRegion);
-    }
-  };
 
   return (
     <View style={styles.container}>
@@ -83,6 +72,15 @@ export default function HomeScreen() {
         disabled={!stableLocation}
       />
 
+      {/* デバッグ用：追従状態の表示 */}
+      {__DEV__ && (
+        <View style={styles.debugInfo}>
+          <Text style={styles.debugText}>
+            追従: {isFollowingUser ? 'ON' : 'OFF'}
+          </Text>
+        </View>
+      )}
+
       <ErrorDisplay errorMsg={errorMsg} />
 
       {/* 音声再生モーダル */}
@@ -98,5 +96,18 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  debugInfo: {
+    position: 'absolute',
+    top: 100,
+    right: 20,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    padding: 10,
+    borderRadius: 5,
+  },
+  debugText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: 'bold',
   },
 }); 
