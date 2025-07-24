@@ -1,6 +1,7 @@
 import React, { ReactNode, forwardRef } from 'react';
 import { StyleSheet, View } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
+import Svg, { Path } from 'react-native-svg';
 import { UserLocationData } from '../../../location/domain/entities/Location';
 import { MapRegion } from '../../domain/entities/MapRegion';
 
@@ -41,6 +42,21 @@ export const MapContainer = forwardRef<MapView, MapContainerProps>(
             anchor={{ x: 0.5, y: 0.5 }}
           >
             <View style={styles.markerContainer}>
+              {/* 方向を示す扇形 */}
+              {userLocation.coords.heading !== null && (
+                <View style={[styles.headingIndicator, { transform: [{ rotate: `${userLocation.coords.heading}deg` }] }]}>
+                  <Svg width="60" height="60" viewBox="0 0 60 60" style={styles.fanShape}>
+                    <Path
+                      d="M 30 30 L 30 5 A 25 25 0 0 1 47.5 12.5 Z"
+                      fill="#007AFF"
+                      fillOpacity={0.3}
+                      stroke="#007AFF"
+                      strokeWidth="1"
+                      strokeOpacity={0.5}
+                    />
+                  </Svg>
+                </View>
+              )}
               {/* メインの青いドット */}
               <View style={styles.locationDot}>
                 <View style={styles.innerDot} />
@@ -63,8 +79,18 @@ const styles = StyleSheet.create({
   markerContainer: {
     alignItems: 'center',
     justifyContent: 'center',
-    width: 26,
-    height: 26,
+    width: 60,
+    height: 60,
+  },
+  headingIndicator: {
+    position: 'absolute',
+    width: 60,
+    height: 60,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fanShape: {
+    position: 'absolute',
   },
   locationDot: {
     width: 20,
