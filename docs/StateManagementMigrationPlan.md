@@ -149,25 +149,40 @@ interface LayersState {
 - layers-service.tsの作成
 - 将来的なSupabase連携を想定した設計
 
-### 3.3 Phase 3: map機能の移行（推定工数: 1-2日）
+### 3.3 Phase 3: map機能の移行（✅ 完了: 2025-07-24）
 
-#### Step 3-1: map-store.tsの作成
+#### Step 3-1: map-store.tsの作成 ✅
 ```typescript
 // src/features/map/application/map-store.ts
 interface MapState {
   // UI状態
   region: MapRegion;
   zoomLevel: number;
+  isFollowingUser: boolean;
   
   // 設定（永続化対象）
-  mapType: 'standard' | 'satellite' | 'hybrid';
-  showUserLocation: boolean;
+  settings: {
+    mapType: 'standard' | 'satellite' | 'hybrid';
+    showUserLocation: boolean;
+    showCompass: boolean;
+    showScale: boolean;
+  };
 }
 ```
 
-#### Step 3-2: locationストアとの連携
-- 位置情報更新時の地図自動追従
-- 地図とlocationの同期
+#### Step 3-2: カスタムフックの更新 ✅
+- useMapRegion.tsをZustandストアを使用するように修正
+- useMapSettings.ts、useMapFollowing.tsの新規作成
+- useMapWithLocation.tsでlocationストアとの連携実装
+
+#### Step 3-3: 追従機能の実装 ✅
+- 現在位置ボタンで追従開始
+- 地図手動操作で追従停止
+- 位置情報更新時の自動アニメーション
+
+#### Step 3-4: テストの実装 ✅
+- map-store.test.tsの作成
+- TypeScriptエラーの解消
 
 ### 3.4 Phase 4: audioPin機能の移行（推定工数: 3-4日）
 
@@ -285,8 +300,8 @@ npm list zustand @tanstack/react-query react-native-mmkv
 | Phase 0 | 開発環境整備 | 1日 | 0.5日 | ✅ 完了 |
 | Phase 1 | location機能 | 2-3日 | 1日 | ✅ 完了 |
 | Phase 2 | layers機能 | 2-3日 | 0.5日 | ✅ 完了 |
-| Phase 3 | map機能 | 1-2日 | - | 🔄 次の作業 |
-| Phase 4 | audioPin機能 | 3-4日 | - | ⏳ 待機中 |
+| Phase 3 | map機能 | 1-2日 | 0.5日 | ✅ 完了 |
+| Phase 4 | audioPin機能 | 3-4日 | - | 🔄 次の作業 |
 | 最終確認 | 統合テスト・調整 | 1日 | - | ⏳ 待機中 |
 
 ## 9. 成功指標
@@ -336,12 +351,29 @@ npm list zustand @tanstack/react-query react-native-mmkv
    - Supabase連携を想定したサービス層の設計
    - TanStack Queryによるサーバー状態管理の準備
 
-### 10.3 関連ドキュメント
+### 10.3 map機能の実装で得られた知見
+
+1. **追従機能の実装**
+   - 位置情報更新と地図表示の連携
+   - ユーザー操作による追従自動停止
+   - スムーズなアニメーション実装
+
+2. **設定の永続化**
+   - 地図タイプや表示オプションの保存
+   - アプリ再起動後も設定が維持される
+
+3. **デバッグ機能**
+   - 開発環境での状態表示
+   - コンソールログによる動作確認
+
+### 10.4 関連ドキュメント
 
 - [LocationMigrationSummary.md](./LocationMigrationSummary.md) - location機能の移行まとめ
 - [HeadingFeatureImplementation.md](./HeadingFeatureImplementation.md) - 方向表示機能の実装詳細
 - [IndependentHeadingUpdate.md](./IndependentHeadingUpdate.md) - 独立した方向更新の実装
 - [LayersMigrationSummary.md](./LayersMigrationSummary.md) - layers機能の移行まとめ
+- [LocationTrackingArchitecture.md](./LocationTrackingArchitecture.md) - 位置情報取得と地図更新のアーキテクチャ
+- [CHANGELOG.md](./CHANGELOG.md) - 変更履歴
 
 ---
 
