@@ -1,12 +1,26 @@
 import * as Location from 'expo-location';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { Alert } from 'react-native';
-import { UserLocationData } from '../../domain/entities/Location';
+import { UserLocationData, LocationError } from '../../domain/entities/Location';
+import {
+  useLocationStore,
+} from '../../application/location-store';
 
 export const useLocation = () => {
-  const [location, setLocation] = useState<UserLocationData | null>(null);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [isLocationEnabled, setIsLocationEnabled] = useState(false);
+  // Zustandストアから状態を取得（一時的な対処として直接ストアから取得）
+  const location = useLocationStore((state) => state.currentLocation);
+  const errorMsg = useLocationStore((state) => state.error);
+  const isLocationEnabled = useLocationStore((state) => state.isLocationEnabled);
+  const settings = useLocationStore((state) => state.settings);
+  
+  // アクションを取得
+  const setCurrentLocation = useLocationStore((state) => state.setCurrentLocation);
+  const setIsLocationEnabled = useLocationStore((state) => state.setIsLocationEnabled);
+  const setIsLoading = useLocationStore((state) => state.setIsLoading);
+  const startTracking = useLocationStore((state) => state.startLocationTracking);
+  const stopTracking = useLocationStore((state) => state.stopLocationTracking);
+  const handleLocationError = useLocationStore((state) => state.handleLocationError);
+  
   const locationSubscription = useRef<Location.LocationSubscription | null>(null);
 
   // 位置情報の許可を取得
@@ -15,7 +29,11 @@ export const useLocation = () => {
       const { status } = await Location.requestForegroundPermissionsAsync();
       
       if (status !== 'granted') {
-        setErrorMsg('位置情報の許可が必要です');
+        const locationError: LocationError = {
+          code: 'PERMISSION_DENIED',
+          message: '位置情報の許可が必要です',
+        };
+        handleLocationError(locationError);
         Alert.alert(
           '位置情報の許可',
           '位置情報の許可が必要です。設定から許可してください。',
@@ -27,7 +45,11 @@ export const useLocation = () => {
       // 位置情報サービスが有効かチェック
       const servicesEnabled = await Location.hasServicesEnabledAsync();
       if (!servicesEnabled) {
-        setErrorMsg('位置情報サービスが無効です');
+        const locationError: LocationError = {
+          code: 'SERVICES_DISABLED',
+          message: '位置情報サービスが無効です',
+        };
+        handleLocationError(locationError);
         Alert.alert(
           '位置情報サービス',
           '位置情報サービスを有効にしてください。',
@@ -39,7 +61,11 @@ export const useLocation = () => {
       return true;
     } catch (error) {
       console.error('位置情報許可エラー:', error);
-      setErrorMsg('位置情報の許可取得でエラーが発生しました');
+      const locationError: LocationError = {
+        code: 'POSITION_UNAVAILABLE',
+        message: '位置情報の許可取得でエラーが発生しました',
+      };
+      handleLocationError(locationError);
       return false;
     }
   };
@@ -47,17 +73,24 @@ export const useLocation = () => {
   // 現在位置を取得
   const getCurrentLocation = async (): Promise<UserLocationData | null> => {
     try {
+      setIsLoading(true);
       const currentLocation = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.High,
-        timeInterval: 1000,
-        distanceInterval: 1,
+        accuracy: settings.highAccuracyMode ? Location.Accuracy.High : Location.Accuracy.Balanced,
+        timeInterval: settings.locationUpdateInterval,
+        distanceInterval: settings.distanceFilter,
       });
       
-      setLocation(currentLocation);
+      setCurrentLocation(currentLocation);
+      setIsLoading(false);
       return currentLocation;
     } catch (error) {
       console.error('現在位置取得エラー:', error);
-      setErrorMsg('現在位置の取得に失敗しました');
+      const locationError: LocationError = {
+        code: 'POSITION_UNAVAILABLE',
+        message: '現在位置の取得に失敗しました',
+      };
+      handleLocationError(locationError);
+      setIsLoading(false);
       return null;
     }
   };
@@ -69,21 +102,27 @@ export const useLocation = () => {
         locationSubscription.current.remove();
       }
 
+      startTracking(); // ストアの状態を更新
+
       locationSubscription.current = await Location.watchPositionAsync(
         {
-          accuracy: Location.Accuracy.High,
-          timeInterval: 2000, // 2秒ごとに更新
-          distanceInterval: 5, // 5m移動したら更新
+          accuracy: settings.highAccuracyMode ? Location.Accuracy.High : Location.Accuracy.Balanced,
+          timeInterval: settings.locationUpdateInterval,
+          distanceInterval: settings.distanceFilter,
         },
         (newLocation) => {
-          setLocation(newLocation);
+          setCurrentLocation(newLocation);
         }
       );
       
       setIsLocationEnabled(true);
     } catch (error) {
       console.error('位置情報監視エラー:', error);
-      setErrorMsg('位置情報の監視開始に失敗しました');
+      const locationError: LocationError = {
+        code: 'POSITION_UNAVAILABLE',
+        message: '位置情報の監視開始に失敗しました',
+      };
+      handleLocationError(locationError);
     }
   };
 
@@ -93,6 +132,7 @@ export const useLocation = () => {
       locationSubscription.current.remove();
       locationSubscription.current = null;
     }
+    stopTracking(); // ストアの状態を更新
     setIsLocationEnabled(false);
   };
 
@@ -102,6 +142,7 @@ export const useLocation = () => {
       const hasPermission = await requestLocationPermission();
       
       if (hasPermission) {
+        setIsLocationEnabled(true);
         const currentLocation = await getCurrentLocation();
         if (currentLocation) {
           await startLocationTracking();
@@ -117,8 +158,10 @@ export const useLocation = () => {
         locationSubscription.current.remove();
       }
     };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // 空の依存配列で初回のみ実行
 
+  // 既存のインターフェースを維持
   return {
     location,
     errorMsg,
