@@ -31,9 +31,7 @@ export const useLayerSelection = () => {
   }, [toggleLayerAction]);
   
   // 選択されているレイヤーIDの配列を取得
-  const getSelectedLayerIds = useCallback((): string[] => {
-    return selectedLayerIds;
-  }, [selectedLayerIds]);
+  const getSelectedLayerIds = (): string[] => selectedLayerIds;
   
   // すべてのレイヤーを選択/解除
   const toggleAllLayers = useCallback((select: boolean = true) => {
