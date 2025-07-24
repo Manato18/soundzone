@@ -1,50 +1,33 @@
 # SoundZone - 変更履歴
 
-## [Docs] - 2025-01-23 - 📚 包括的なドキュメント構造の構築
+## [StateManagement] - 2025-01-24 - 🔄 Location機能の状態管理移行
 
-### プロジェクト全体のドキュメント化
-SoundZoneプロジェクトの要件定義から技術仕様まで、開発に必要な全ドキュメントを体系的に整備しました。
+### Location機能のZustand/MMKV移行完了
+StateManagement.mdで定義した規約に従い、Location機能の状態管理を従来のReact標準状態からZustand+MMKV構成に移行しました。
 
-#### **📋 要件・設計ドキュメント**
-- **Overview.md**: プロジェクト背景とコンセプト定義
-  - デジタル社会における孤独課題の解決を目標とした位置情報ベース音声共有アプリのビジョン
-  - ユーザーのリアルな繋がりを促進する社会的価値の明確化
-- **ScopeVer1.md**: Version 1機能スコープの明確化
-  - 最終形態47テーブルからVersion 1の9テーブルへの機能絞り込み
-  - 基本認証・地図表示・5つのプリセットレイヤー・音声録音投稿に集約
-- **PersonasAndUserstories.md**: ユーザー中心設計
-  - 3つのペルソナ（音楽探索者・旅行好き・地域活動家）の詳細定義
-  - 10のユーザーストーリーによる機能要件の優先順位付け
+#### **📁 新規作成ファイル**
+- **`/src/constants/StorageKeys.ts`**: MMKV永続化キーの集約管理
+  - 型安全性を確保するための型定義を追加
+- **`/src/features/location/application/location-store.ts`**: Zustand状態管理ストア
+  - サーバー状態（currentLocation）、UI状態（isLoading, error, isLocationEnabled, isTracking）、設定（永続化対象）の分離管理
+  - middleware順序: `devtools → persist → immer → subscribeWithSelector`
+  - 設定のみをMMKV永続化、大きなデータは永続化しない設計
+- **`/src/features/location/application/__tests__/location-store.test.ts`**: 基本テストケース実装
 
-#### **🏗️ 技術アーキテクチャ**
-- **DataModel.md**: データベース設計の完全仕様
-  - PostgreSQL/Supabaseベースの包括的なスキーマ設計
-  - Version 1最小構成（9テーブル）と最終形態（47テーブル）の差分管理
-  - 完全なDDL定義とマイグレーション戦略
-- **StateManagement.md**: 状態管理の統一規約
-  - TanStack Query（サーバー状態）+ Zustand（UI状態）+ MMKV（永続化）アーキテクチャ
-  - レイヤー責務の明確化と実装ガイドライン
-- **Dependencies.md**: 技術スタックと依存関係管理
-  - React Native 0.79.5、Expo SDK 53.0.20を中心とした技術構成
-  - 認証、地図、音声、状態管理ライブラリの詳細仕様
+#### **🔧 更新ファイル**
+- **`/src/features/location/presentation/hooks/useLocation.ts`**: 内部実装移行
+  - React標準のuseStateからZustandストアへの切り替え
+  - 既存インターフェース維持による破壊的変更の回避
 
-#### **📖 開発支援ドキュメント**
-- **Glossary.md**: プロジェクト固有用語の統一
-  - SoundPin（位置情報付き音声投稿）、Layer（分類システム）、MyPin（個人音声プロフィール）の定義
-- **DevelopmentProgress.md**: 開発進捗の可視化管理
-  - 全体進捗35%の詳細内訳と機能別実装状況
-  - データベース実装課題の特定と優先順位の明確化
-- **TIPS.md**: 開発環境とトラブルシューティング
-  - Expo開発環境の設定方法、QRコード起動手順
-  - 接続問題の解決策とパフォーマンス最適化手法
+#### **📊 状態分類の明確化**
+- **UI状態**: ローカル一時的状態（isLoading, error, isLocationEnabled, isTracking）
+- **サーバー状態**: API連携予定状態（currentLocation）
+- **永続化状態**: アプリ再起動後保持設定（locationUpdateInterval, highAccuracyMode, distanceFilter）
 
 ### 技術的改善点
-- **iOS Podfile.lock**: CocoaPodsの依存関係を追加（2817行）
-- **ファイル命名規則**: `development-progress.md` → `DevelopmentProgress.md` への統一
+- **破壊的変更なし**: HomeScreen.tsxなど既存コンポーネントは変更不要
+- **型安全性**: TypeScript型チェック完全対応
+- **lintエラー修正**: 未使用変数削除、インポート整理
 
-### ドキュメント効果
-この包括的なドキュメント化により、プロジェクトの全体像から詳細実装まで一貫した開発指針を確立。チーム間の認識統一と効率的な開発進行を実現しました。
-
----
-
-## [Docs] - 2025-01-22 - 📚 ドキュメント構造の大幅整理・再構成
+### 次のステップ
+StateManagementMigrationPlan.mdに従い、次はlayers機能の移行を実施予定。パフォーマンス最適化（shallow比較、セレクター最適化）、機能拡張（位置情報履歴、バックグラウンド追跡）、テスト拡充（統合・E2Eテスト）も計画中。
