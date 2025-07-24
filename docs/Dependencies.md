@@ -83,6 +83,7 @@ TanStack Query (サーバー状態) + Zustand (UI状態) + MMKV (永続化)
 | **React Native Gesture Handler** | `~2.24.0` | ジェスチャ認識 | Reanimated との組み合わせ |
 | **Expo Blur** | `~14.1.5` | ブラー効果 | iOS/Android 対応 |
 | **Expo Haptics** | `~14.1.4` | ハプティックフィードバック | デバイス振動制御 |
+| **React Native SVG** | `^15.11.0` | SVG描画ライブラリ | ベクター図形描画、地図上の方向表示で使用 |
 
 ## 9. Expo モジュール
 
