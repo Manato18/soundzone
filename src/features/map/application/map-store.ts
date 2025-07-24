@@ -1,9 +1,9 @@
+import { MMKV } from 'react-native-mmkv';
 import { create } from 'zustand';
 import { devtools, persist } from 'zustand/middleware';
 import { immer } from 'zustand/middleware/immer';
-import { MMKV } from 'react-native-mmkv';
-import { MapRegion } from '../domain/entities/MapRegion';
 import { StorageKeys } from '../../../constants/StorageKeys';
+import { MapRegion } from '../domain/entities/MapRegion';
 
 /**
  * 地図関連の状態管理
@@ -97,9 +97,9 @@ export const useMapStore = create<MapState>()(
         
         setIsFollowingUser: (isFollowing) => set((state) => {
           state.isFollowingUser = isFollowing;
-          if (__DEV__) {
-            console.log(`[MapStore] 追従モード: ${isFollowing ? 'ON' : 'OFF'}`);
-          }
+          // if (__DEV__) {
+          //   console.log(`[MapStore] 追従モード: ${isFollowing ? 'ON' : 'OFF'}`);
+          // }
         }),
         
         updateMapType: (mapType) => set((state) => {

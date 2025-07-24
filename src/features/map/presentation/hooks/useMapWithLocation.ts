@@ -1,8 +1,8 @@
 import { useEffect, useRef } from 'react';
 import MapView from 'react-native-maps';
-import { useMapStore } from '../../application/map-store';
 import { useLocationStore } from '../../../location/application/location-store';
 import { UserLocationData } from '../../../location/domain/entities/Location';
+import { useMapStore } from '../../application/map-store';
 
 /**
  * 地図と位置情報の連携フック
@@ -41,12 +41,12 @@ export const useMapWithLocation = (mapRef: React.RefObject<MapView | null>) => {
       mapRef.current.animateToRegion(newRegion, 1000);
       updateRegion(newRegion);
       
-      if (__DEV__) {
-        console.log(`[MapWithLocation] 位置更新による地図追従:`, {
-          lat: newRegion.latitude.toFixed(6),
-          lng: newRegion.longitude.toFixed(6),
-        });
-      }
+      // if (__DEV__) {
+      //   console.log(`[MapWithLocation] 位置更新による地図追従:`, {
+      //     lat: newRegion.latitude.toFixed(6),
+      //     lng: newRegion.longitude.toFixed(6),
+      //   });
+      // }
       
       previousLocationRef.current = currentLocation;
     }
@@ -66,12 +66,12 @@ export const useMapWithLocation = (mapRef: React.RefObject<MapView | null>) => {
       updateRegion(newRegion);
       setIsFollowingUser(true);
       
-      if (__DEV__) {
-        console.log(`[MapWithLocation] 現在位置ボタンタップ:`, {
-          lat: newRegion.latitude.toFixed(6),
-          lng: newRegion.longitude.toFixed(6),
-        });
-      }
+      // if (__DEV__) {
+      //   console.log(`[MapWithLocation] 現在位置ボタンタップ:`, {
+      //     lat: newRegion.latitude.toFixed(6),
+      //     lng: newRegion.longitude.toFixed(6),
+      //   });
+      // }
     }
   };
   
