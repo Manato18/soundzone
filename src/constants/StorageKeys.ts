@@ -18,6 +18,7 @@ export const StorageKeys = {
   
   // レイヤー関連
   LAYERS: {
+    SETTINGS: 'layers-settings',
     SELECTED_IDS: 'layers-selected-ids',
     FAVORITE_IDS: 'layers-favorite-ids',
     DEFAULT_IDS: 'layers-default-ids',
