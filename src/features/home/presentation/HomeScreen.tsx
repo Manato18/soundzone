@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { StyleSheet, View } from 'react-native';
 import MapView from 'react-native-maps';
 import AudioPlayerModal from '../../../../components/AudioPlayerModal';
@@ -21,6 +21,16 @@ export default function HomeScreen() {
   const { audioPins, selectedAudio, modalVisible, handlePinPress, handleCloseModal } = useAudioPins();
   const { region, updateRegion } = useMapRegion();
   
+  // 最後の有効な位置情報を保持（チカチカ防止）
+  const [stableLocation, setStableLocation] = useState(location);
+  
+  useEffect(() => {
+    // locationが有効な値の場合のみ更新
+    if (location && location.coords && location.coords.latitude && location.coords.longitude) {
+      setStableLocation(location);
+    }
+  }, [location]);
+  
   // レイヤー機能
   const { layers, toggleLayer, getSelectedLayerIds } = useLayerSelection();
   const { filteredPins } = useAudioPinFiltering({
@@ -30,10 +40,10 @@ export default function HomeScreen() {
 
   // 現在位置を中心に戻すハンドラー
   const centerOnUserLocation = () => {
-    if (location && mapRef.current) {
+    if (stableLocation && mapRef.current) {
       const newRegion = {
-        latitude: location.coords.latitude,
-        longitude: location.coords.longitude,
+        latitude: stableLocation.coords.latitude,
+        longitude: stableLocation.coords.longitude,
         latitudeDelta: region.latitudeDelta,
         longitudeDelta: region.longitudeDelta,
       };
@@ -49,7 +59,7 @@ export default function HomeScreen() {
         ref={mapRef}
         region={region}
         onRegionChange={updateRegion}
-        userLocation={location}
+        userLocation={stableLocation}
       >
         <AudioPinMarkers
           pins={filteredPins}
@@ -64,7 +74,7 @@ export default function HomeScreen() {
 
       <LocationButton
         onPress={centerOnUserLocation}
-        disabled={!location}
+        disabled={!stableLocation}
       />
 
       <ErrorDisplay errorMsg={errorMsg} />

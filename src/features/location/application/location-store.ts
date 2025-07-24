@@ -24,6 +24,7 @@ export interface LocationState {
     locationUpdateInterval: number; // ミリ秒単位
     highAccuracyMode: boolean;
     distanceFilter: number; // メートル単位
+    headingUpdateInterval: number; // ミリ秒単位（方向情報の更新間隔）
   };
 }
 
@@ -33,6 +34,7 @@ export interface LocationState {
 export interface LocationActions {
   // 位置情報の更新
   setCurrentLocation: (location: UserLocationData | null) => void;
+  updateHeading: (heading: number | null) => void;
   
   // UI状態の更新
   setIsLoading: (isLoading: boolean) => void;
@@ -70,6 +72,7 @@ export const initialLocationState: LocationState = {
     locationUpdateInterval: 2000, // 2秒
     highAccuracyMode: true,
     distanceFilter: 5, // 5メートル
+    headingUpdateInterval: 100, // 100ミリ秒（0.1秒）
   },
 };
 
@@ -93,6 +96,13 @@ export const useLocationStore = create<LocationStore>()(
         // 位置情報の更新
         setCurrentLocation: (location) => set((state) => {
           state.currentLocation = location;
+        }),
+
+        // 方向情報のみ更新（nullの場合は前の値を保持）
+        updateHeading: (heading) => set((state) => {
+          if (state.currentLocation && heading !== null) {
+            state.currentLocation.coords.heading = heading;
+          }
         }),
 
         // UI状態の更新

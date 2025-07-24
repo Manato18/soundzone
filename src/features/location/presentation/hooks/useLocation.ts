@@ -15,6 +15,7 @@ export const useLocation = () => {
   
   // アクションを取得
   const setCurrentLocation = useLocationStore((state) => state.setCurrentLocation);
+  const updateHeading = useLocationStore((state) => state.updateHeading);
   const setIsLocationEnabled = useLocationStore((state) => state.setIsLocationEnabled);
   const setIsLoading = useLocationStore((state) => state.setIsLoading);
   const startTracking = useLocationStore((state) => state.startLocationTracking);
@@ -22,6 +23,7 @@ export const useLocation = () => {
   const handleLocationError = useLocationStore((state) => state.handleLocationError);
   
   const locationSubscription = useRef<Location.LocationSubscription | null>(null);
+  const headingSubscription = useRef<Location.LocationSubscription | null>(null);
 
   // 位置情報の許可を取得
   const requestLocationPermission = async (): Promise<boolean> => {
@@ -95,6 +97,31 @@ export const useLocation = () => {
     }
   };
 
+  // 方向情報の監視を開始（独立した更新）
+  const startHeadingTracking = async (): Promise<void> => {
+    try {
+      if (headingSubscription.current) {
+        headingSubscription.current.remove();
+      }
+
+      // 高頻度での方向更新（デフォルト: 100ms）
+      const headingUpdateInterval = Math.floor(1000 / (1000 / settings.headingUpdateInterval));
+      
+      headingSubscription.current = await Location.watchHeadingAsync(
+        (headingData) => {
+          // trueHeadingが利用可能な場合は優先、そうでなければmagHeadingを使用
+          const heading = headingData.trueHeading !== -1 ? headingData.trueHeading : headingData.magHeading;
+          // 有効な値の場合のみ更新（nullや無効な値の場合は前の値を保持）
+          if (heading !== null && heading !== undefined && !isNaN(heading)) {
+            updateHeading(heading);
+          }
+        }
+      );
+    } catch (error) {
+      console.error('方向情報監視エラー:', error);
+    }
+  };
+
   // 位置情報の監視を開始
   const startLocationTracking = async (): Promise<void> => {
     try {
@@ -111,9 +138,16 @@ export const useLocation = () => {
           distanceInterval: settings.distanceFilter,
         },
         (newLocation) => {
+          // 新しい位置情報を設定する際、heading がnullの場合は現在の heading を保持
+          if (newLocation.coords.heading === null && location?.coords.heading !== null) {
+            newLocation.coords.heading = location.coords.heading;
+          }
           setCurrentLocation(newLocation);
         }
       );
+      
+      // 方向情報の監視も開始
+      await startHeadingTracking();
       
       setIsLocationEnabled(true);
     } catch (error) {
@@ -131,6 +165,10 @@ export const useLocation = () => {
     if (locationSubscription.current) {
       locationSubscription.current.remove();
       locationSubscription.current = null;
+    }
+    if (headingSubscription.current) {
+      headingSubscription.current.remove();
+      headingSubscription.current = null;
     }
     stopTracking(); // ストアの状態を更新
     setIsLocationEnabled(false);
@@ -156,6 +194,9 @@ export const useLocation = () => {
     return () => {
       if (locationSubscription.current) {
         locationSubscription.current.remove();
+      }
+      if (headingSubscription.current) {
+        headingSubscription.current.remove();
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
