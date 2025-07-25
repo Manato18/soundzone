@@ -164,7 +164,12 @@ export default function AudioPlayerModal({ visible, onClose, audioData }: AudioP
         const performTransition = (targetState: keyof typeof MODAL_STATES) => {
           setTimeout(() => {
             if (isMountedRef.current) {
-              animateToState(targetState);
+              if (targetState === 'CLOSED') {
+                // CLOSEDの場合はcloseModal関数を使用して音声も停止
+                closeModal();
+              } else {
+                animateToState(targetState);
+              }
             }
           }, 0);
         };
@@ -197,7 +202,7 @@ export default function AudioPlayerModal({ visible, onClose, audioData }: AudioP
         }
       },
     }),
-    [slideAnim, animateToState]
+    [slideAnim, animateToState, closeModal]
   );
 
   // モーダルオープンアニメーション（下半分から開始）

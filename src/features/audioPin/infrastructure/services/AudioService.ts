@@ -17,6 +17,7 @@ import TrackPlayer, {
 export class AudioService {
   private static instance: AudioService;
   private isInitialized = false;
+  private currentTrackId: string | null = null;
 
   private constructor() {}
 
@@ -66,7 +67,18 @@ export class AudioService {
    * 現在の再生状態を取得
    */
   async getState(): Promise<State> {
-    return await TrackPlayer.getState();
+    if (!this.isInitialized) {
+      return State.None;
+    }
+    
+    try {
+      return await TrackPlayer.getState();
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('not initialized')) {
+        return State.None;
+      }
+      throw error;
+    }
   }
 
   /**
@@ -80,11 +92,17 @@ export class AudioService {
       }
     }
 
-    // 既存のトラックをクリア
-    await TrackPlayer.reset();
-    
-    // 新しいトラックを追加
-    await TrackPlayer.add(track);
+    // 現在のトラックと異なる場合のみリセット
+    if (this.currentTrackId !== track.id) {
+      // 既存のトラックをクリア
+      await TrackPlayer.reset();
+      
+      // 新しいトラックを追加
+      await TrackPlayer.add(track);
+      
+      // 現在のトラックIDを更新
+      this.currentTrackId = track.id;
+    }
     
     // 再生開始
     await TrackPlayer.play();
@@ -94,24 +112,63 @@ export class AudioService {
    * 再生を一時停止
    */
   async pause(): Promise<void> {
-    await TrackPlayer.pause();
+    if (!this.isInitialized) {
+      return;
+    }
+    
+    try {
+      await TrackPlayer.pause();
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('not initialized')) {
+        return;
+      }
+      throw error;
+    }
   }
 
   /**
    * 再生を再開
    */
   async resume(): Promise<void> {
-    await TrackPlayer.play();
+    if (!this.isInitialized) {
+      return;
+    }
+    
+    try {
+      await TrackPlayer.play();
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('not initialized')) {
+        return;
+      }
+      throw error;
+    }
   }
 
   /**
    * 再生を停止してリセット
    */
   async stop(): Promise<void> {
+    // 初期化されていない場合は何もしない
+    if (!this.isInitialized) {
+      this.currentTrackId = null;
+      return;
+    }
+
     try {
-      await TrackPlayer.stop();
-      await TrackPlayer.reset();
+      const state = await TrackPlayer.getState();
+      // プレイヤーが有効な状態の場合のみ停止処理を実行
+      if (state !== State.None) {
+        await TrackPlayer.stop();
+        await TrackPlayer.reset();
+      }
+      this.currentTrackId = null;
     } catch (error) {
+      // エラーが発生してもcurrentTrackIdはクリア
+      this.currentTrackId = null;
+      // 初期化されていないエラーの場合は無視
+      if (error instanceof Error && error.message.includes('not initialized')) {
+        return;
+      }
       console.error('[AudioService] Error stopping audio:', error);
     }
   }
@@ -144,6 +201,7 @@ export class AudioService {
     try {
       await this.stop();
       this.isInitialized = false;
+      this.currentTrackId = null;
     } catch (error) {
       console.error('[AudioService] Error during cleanup:', error);
     }
