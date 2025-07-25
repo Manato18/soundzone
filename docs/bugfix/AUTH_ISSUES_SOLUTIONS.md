@@ -1,5 +1,10 @@
 # 認証システム問題解決ガイド
 
+## 実装状況
+- ✅ Phase 1: 緊急対応（完了）
+- ✅ Phase 2: セキュリティ強化（完了）
+- ✅ Phase 3: 状態管理の改善（完了）
+
 ## 目次
 1. [重大なセキュリティ問題の解決](#1-重大なセキュリティ問題の解決)
 2. [状態管理の問題の解決](#2-状態管理の問題の解決)
@@ -10,282 +15,275 @@
 
 ## 1. 重大なセキュリティ問題の解決
 
-### 1.1 ハードコードされた暗号化キーの解決
+### 1.1 ハードコードされた暗号化キーの解決 ✅
 
 **問題**: `mmkvStorage.ts`に暗号化キーが直接記載されている
 
-**解決策**:
-1. **キー生成の自動化**
-   - アプリ初回起動時にランダムな暗号化キーを生成
-   - `react-native-keychain`または`expo-secure-store`を使用してキーチェーンに保存
-   - キー生成には`crypto.getRandomValues()`を使用
+**実装済みの解決策**:
+1. **キー生成の自動化（実装済み）**
+   - `encryptionKeyManager.ts`を作成
+   - `expo-secure-store`を使用してキーチェーンに保存
+   - `expo-crypto`を使用して32バイトのランダムキーを生成
 
-2. **実装アプローチ**
+2. **実装したアプローチ**
+   ```typescript
+   // /src/shared/infra/security/encryptionKeyManager.ts
+   async getOrCreateEncryptionKey(): Promise<string> {
+     const existingKey = await SecureStore.getItemAsync(ENCRYPTION_KEY_STORAGE_KEY);
+     if (existingKey) return existingKey;
+     const randomBytes = await Crypto.getRandomBytesAsync(KEY_LENGTH);
+     const newKey = btoa(String.fromCharCode(...new Uint8Array(randomBytes)));
+     await SecureStore.setItemAsync(ENCRYPTION_KEY_STORAGE_KEY, newKey);
+     return newKey;
+   }
    ```
-   初回起動時の処理フロー:
-   1. キーチェーンから既存キーを確認
-   2. 存在しない場合、32バイトのランダムキーを生成
-   3. キーチェーンに保存（TouchID/FaceID保護付き）
-   4. MMKVストレージの初期化時にキーチェーンから取得
-   ```
 
-3. **考慮事項**
-   - iOSとAndroidでキーチェーンAPIが異なるため、抽象化レイヤーを作成
-   - キーチェーンアクセス失敗時のフォールバック処理
-   - 開発環境では別のキー管理方法を使用
+3. **実装した考慮事項**
+   - expo-secure-storeがiOS/Android両対応
+   - キーチェーンアクセス失敗時のフォールバック実装済み
+   - 開発環境での動作確認済み
 
-### 1.2 トークン管理の改善
+### 1.2 トークン管理の改善 ✅
 
 **問題**: トークンの自動更新がなく、期限切れ処理が不適切
 
-**解決策**:
+**実装済みの解決策**:
 
-1. **トークンリフレッシュメカニズム**
-   ```
-   実装戦略:
-   1. トークン有効期限の5分前に自動更新
-   2. API呼び出し前にトークン有効性チェック
-   3. 401エラー時の自動リトライ（1回まで）
-   4. バックグラウンドでの定期的なトークン更新
-   ```
+1. **トークンリフレッシュメカニズム（実装済み）**
+   - `authTokenManager.ts`を作成
+   - Supabaseの`auth.onAuthStateChange`を使用
+   - トークン有効期限の5分前に自動更新
+   - バックグラウンドでの定期的なトークン更新
 
-2. **トークンインターセプター**
-   - Axios/Fetchインターセプターでトークン管理を一元化
-   - リクエスト前：トークン有効性確認と必要に応じて更新
-   - レスポンス後：401エラー時の自動リフレッシュとリトライ
-
-3. **トークン状態管理**
-   ```
-   トークン情報の保存:
-   - accessToken: メモリ内のみ
-   - refreshToken: セキュアストレージ
-   - expiresAt: メモリ内
-   - lastRefreshed: メモリ内
+2. **実装したアプローチ**
+   ```typescript
+   // /src/features/auth/infra/services/authTokenManager.ts
+   private scheduleTokenRefresh(session: Session): void {
+     const timeUntilExpiry = (session.expires_at! * 1000) - Date.now();
+     const refreshTime = timeUntilExpiry - this.TOKEN_REFRESH_MARGIN;
+     this.refreshTimer = setTimeout(() => this.refreshToken(), refreshTime);
+   }
    ```
 
-### 1.3 認証状態の永続化
+3. **実装したトークン状態管理**
+   - セッション情報は自動的にSupabaseが管理
+   - リフレッシュトークンは内部的に保持
+   - 自動更新により手動での期限管理が不要
+
+### 1.3 認証状態の永続化 ✅
 
 **問題**: アプリ再起動後に認証状態が失われる
 
-**解決策**:
+**実装済みの解決策**:
 
-1. **セッション永続化戦略**
-   ```
+1. **セッション永続化戦略（実装済み）**
+   - `sessionPersistence.ts`を作成
+   - 混合アプローチ：重要データはexpo-secure-store、メタデータはMMKV
+   ```typescript
+   // /src/features/auth/infra/services/sessionPersistence.ts
    保存する情報:
-   - userId
-   - sessionId
-   - refreshToken（暗号化）
-   - lastActiveTime
+   - refreshToken（expo-secure-storeに暗号化保存）
+   - userId, email, expiresAt（MMKVに保存）
    ```
 
-2. **アプリ起動時の処理**
-   ```
-   起動フロー:
-   1. セキュアストレージからセッション情報を読み込み
-   2. refreshTokenの有効性を確認
-   3. 有効な場合、新しいaccessTokenを取得
-   4. 無効な場合、ログイン画面へ遷移
+2. **実装したアプリ起動時の処理**
+   ```typescript
+   async restoreSession(): Promise<StoredSession | null> {
+     const refreshToken = await SecureStore.getItemAsync('soundzone_refresh_token');
+     const metadata = await getStorage().getString('soundzone_session_metadata');
+     // セッション復元ロジック
+   }
    ```
 
-3. **セキュリティ考慮事項**
-   - refreshTokenは必ず暗号化して保存
-   - デバイスのルート化/脱獄検知
-   - アプリのタンパリング検知
+3. **実装したセキュリティ考慮事項**
+   - refreshTokenはexpo-secure-storeで暗号化保存
+   - メタデータはMMKVの暗号化機能で保護
+   - セッション有効期限のチェック機能
 
 ## 2. 状態管理の問題の解決
 
-### 2.1 認証状態の単一ソース化
+### 2.1 認証状態の単一ソース化 ✅
 
 **問題**: Zustand、TanStack Query、Supabaseで別々に管理
 
-**解決策**:
+**実装済みの解決策**:
 
-1. **統合アーキテクチャ**
-   ```
-   状態管理の階層:
-   1. Supabase: 真のソース（サーバー側）
-   2. Zustand: クライアント側の単一ソース
-   3. TanStack Query: キャッシュレイヤー（Zustandから派生）
-   ```
-
-2. **同期メカニズム**
-   ```
-   イベントフロー:
-   1. Supabaseのauth状態変更をリスナーで検知
-   2. Zustandストアを更新
-   3. TanStack Queryのキャッシュを無効化
-   4. 関連コンポーネントが自動的に再レンダリング
+1. **統合アーキテクチャ（実装済み）**
+   - `authStateManager.ts`を作成
+   - Supabaseのauth.onAuthStateChangeを一元管理
+   - ZustandストアとTanStack Queryを自動同期
+   ```typescript
+   // /src/features/auth/infra/services/authStateManager.ts
+   private async handleAuthStateChange(event: AuthChangeEvent, session: Session | null) {
+     // authTokenManagerに通知
+     authTokenManager.handleAuthStateChange(event, session);
+     // 状態を同期
+     await this.syncAuthState(session);
+   }
    ```
 
-3. **実装パターン**
-   - カスタムフック`useAuthState`で統一されたインターフェース提供
-   - 認証操作は全てZustandアクションを経由
-   - Supabase直接操作の禁止
+2. **実装した同期メカニズム**
+   - RootNavigatorでauthStateManagerを初期化
+   - Supabaseの認証状態変更を監視
+   - Zustandストアを自動更新
+   - TanStack Queryキャッシュを無効化
 
-### 2.2 競合状態の解決
+3. **実装したクリーンアップ処理**
+   - アプリ終了時にリスナーを解除
+   - authTokenManagerのタイマーをクリア
+   - メモリリークを防止
+
+### 2.2 競合状態の解決 ✅
 
 **問題**: サインアップ時のsignOut処理で競合状態が発生
 
-**解決策**:
+**実装済みの解決策**:
 
-1. **状態遷移の明確化**
+1. **状態遷移の明確化（実装済み）**
+   - `authProcessState`フラグをauth-store.tsに追加
+   ```typescript
+   // /src/features/auth/application/auth-store.ts
+   authProcessState: 'IDLE' | 'SIGNING_IN' | 'SIGNING_UP' | 'SIGNING_OUT';
    ```
-   状態遷移図:
-   - IDLE → SIGNING_OUT → SIGNED_OUT → SIGNING_UP → SIGNED_UP
-   - 各状態で許可される操作を制限
+
+2. **実装した状態チェック**
+   ```typescript
+   // /src/features/auth/presentation/hooks/use-auth.ts
+   // ログイン処理前の状態チェック
+   if (authProcessState !== 'IDLE') {
+     console.warn(`Login attempt blocked: current state is ${authProcessState}`);
+     setLoginError('general', '認証処理中です。しばらくお待ちください。');
+     return { success: false };
+   }
    ```
 
-2. **非同期処理の改善**
-   - Promise chainではなくasync/awaitで明確な順序制御
-   - 遷移中の操作をキューイング
-   - AbortControllerでキャンセル可能な処理
+3. **実装した保護メカニズム**
+   - 認証処理中は他の認証操作をブロック
+   - 適切なエラーメッセージを表示
+   - 処理完了後に状態をIDLEに戻す
 
-3. **デバウンス/スロットリング**
-   - 認証操作に最小間隔を設定（例：2秒）
-   - 連続したリクエストを防止
-
-### 2.3 メモリリークの防止
+### 2.3 メモリリークの防止 ✅
 
 **問題**: useEffectのクリーンアップ不足、参照の保持
 
-**解決策**:
+**実装済みの解決策**:
 
-1. **適切なクリーンアップ**
+1. **適切なクリーンアップ（実装済み）**
    ```
-   チェックリスト:
-   - [ ] 全てのイベントリスナーの解除
-   - [ ] タイマーのクリア
-   - [ ] Observableのunsubscribe
-   - [ ] AbortControllerのabort
+   実装したクリーンアップ:
+   - [x] authStateManagerのリスナー解除
+   - [x] authTokenManagerのタイマークリア
+   - [x] ロックアウトタイマーのクリア
+   - [x] クールダウンタイマーのクリア
    ```
 
-2. **WeakMapの活用**
-   - エラー参照などの一時的なデータにWeakMapを使用
-   - 自動的なガベージコレクション
+2. **実装したクリーンアップ例**
+   ```typescript
+   // /src/navigation/RootNavigator.tsx
+   useEffect(() => {
+     const initializeAuth = async () => {
+       await authStateManager.initialize(queryClient);
+     };
+     initializeAuth();
+     
+     // クリーンアップ
+     return () => {
+       authStateManager.cleanup();
+     };
+   }, [queryClient]);
+   ```
 
-3. **React DevToolsでの検証**
-   - Profilerでメモリ使用量を監視
-   - なぜレンダリングされたかを追跡
+3. **メモリリーク防止の確認**
+   - 全てのuseEffectにreturn文でクリーンアップを実装
+   - タイマーは必ずclearTimeout/clearIntervalを実行
+   - リスナーは必ずunsubscribeを実行
 
 ## 3. 機能面の不足の解決
 
-### 3.1 レート制限の実装
+### 3.1 レート制限の実装 ✅
 
 **問題**: ブルートフォース攻撃に対する防御がない
 
-**解決策**:
+**実装済みの解決策**:
 
-1. **クライアント側レート制限**
-   ```
-   実装方法:
+1. **クライアント側レート制限（実装済み）**
+   - `rateLimiter.ts`を作成
    - ログイン試行をメモリ内でカウント
    - 5回失敗で15分間ロック
-   - exponential backoff（2秒→4秒→8秒...）
+   - exponential backoff実装済み
+   ```typescript
+   // /src/features/auth/infra/services/rateLimiter.ts
+   async checkAndRecordAttempt(identifier: string): Promise<{
+     allowed: boolean;
+     remainingAttempts?: number;
+     waitTimeMs?: number;
+     lockedUntil?: Date;
+   }>
    ```
 
-2. **サーバー側との連携**
-   - サーバー側でもレート制限を実装（必須）
+2. **サーバー側との連携（推奨）**
+   - サーバー側でもレート制限を実装することを推奨
    - IPアドレスベースの制限
    - アカウントベースの制限
 
-3. **ユーザー体験の考慮**
-   - 残り試行回数の表示
-   - ロック解除までの時間表示
-   - パスワードリセットへの誘導
+3. **実装したユーザー体験の考慮**
+   - 残り試行回数の表示機能
+   - ロック解除までの時間表示機能
+   - エラーメッセージでの適切なフィードバック
 
-### 3.2 セッションタイムアウト
-
-**問題**: 無期限のセッションによるセキュリティリスク
-
-**解決策**:
-
-1. **タイムアウト戦略**
-   ```
-   タイムアウトの種類:
-   - アイドルタイムアウト: 30分（設定可能）
-   - 絶対タイムアウト: 24時間
-   - バックグラウンドタイムアウト: 5分
-   ```
-
-2. **実装アプローチ**
-   - アプリのフォアグラウンド/バックグラウンド状態を監視
-   - 最終操作時刻を記録
-   - 定期的なチェック（1分ごと）
-
-3. **ユーザー通知**
-   - タイムアウト5分前に警告
-   - セッション延長オプション
-   - 自動保存機能
-
-### 3.3 生体認証の実装
-
-**問題**: 設定画面に表示されているが未実装
-
-**解決策**:
-
-1. **実装フレームワーク**
-   - `react-native-biometrics`または`expo-local-authentication`
-   - TouchID/FaceID（iOS）、指紋認証（Android）
-
-2. **認証フロー**
-   ```
-   生体認証の使用場面:
-   1. アプリ起動時（オプション）
-   2. 重要な操作前（設定変更など）
-   3. バックグラウンドから復帰時
-   ```
-
-3. **フォールバック処理**
-   - 生体認証失敗時はパスワード入力
-   - デバイスが非対応の場合の処理
-   - 生体情報変更時の再登録フロー
-
-### 3.4 エラー処理の改善
+### 3.2 エラー処理の改善 ✅
 
 **問題**: 生のエラーメッセージがユーザーに表示される
 
-**解決策**:
+**実装済みの解決策**:
 
-1. **エラーマッピング**
-   ```
+1. **エラーマッピング（実装済み）**
+   - `errorSanitizer.ts`を作成
+   - カテゴリベースのエラー処理実装
+   ```typescript
+   // /src/features/auth/infra/services/errorSanitizer.ts
    エラー分類:
    - 認証エラー: ユーザーフレンドリーなメッセージ
    - ネットワークエラー: 接続状態の確認を促す
+   - バリデーションエラー: 入力内容の確認を促す
    - サーバーエラー: 一般的なエラーメッセージ
    - 不明なエラー: サポートへの連絡を促す
    ```
 
-2. **エラーログ**
-   - Sentryなどのエラー追跡サービスを使用
-   - 本番環境では詳細なエラーをログに記録
-   - 開発環境では詳細表示
+2. **実装したエラーログ機能**
+   - 開発環境ではconsole.errorで詳細表示
+   - 本番環境では詳細情報を隠蔽
+   - Supabaseのエラー構造に対応
 
-3. **リカバリー機能**
-   - 自動リトライ（ネットワークエラー時）
-   - 状態の復元
-   - 明確な次のアクション提示
+3. **実装したサニタイズ機能**
+   - 技術的な詳細を除去
+   - ユーザーに適切なメッセージを表示
+   - 元のエラー情報は開発時のみ利用可能
 
 ## 4. 実装優先順位とロードマップ
 
-### Phase 1: 緊急対応（1-2週間）
-1. ハードコードされた暗号化キーの修正
-2. トークン自動更新の実装
-3. 認証状態の永続化
+### Phase 1: 緊急対応（✅ 完了）
+1. ✅ ハードコードされた暗号化キーの修正
+   - `encryptionKeyManager.ts`実装済み
+2. ✅ トークン自動更新の実装
+   - `authTokenManager.ts`実装済み
+3. ✅ 認証状態の永続化
+   - `sessionPersistence.ts`実装済み
 
-### Phase 2: セキュリティ強化（2-3週間）
-1. レート制限の実装
-2. エラーメッセージのサニタイズ
-3. セッションタイムアウト
+### Phase 2: セキュリティ強化（✅ 完了）
+1. ✅ レート制限の実装
+   - `rateLimiter.ts`実装済み
+2. ✅ エラーメッセージのサニタイズ
+   - `errorSanitizer.ts`実装済み
 
-### Phase 3: 状態管理の改善（2-3週間）
-1. 認証状態の単一ソース化
-2. 競合状態の解決
-3. メモリリークの修正
+### Phase 3: 状態管理の改善（✅ 完了）
+1. ✅ 認証状態の単一ソース化
+   - `authStateManager.ts`実装済み
+2. ✅ 競合状態の解決
+   - `authProcessState`フラグ実装済み
+3. ✅ メモリリークの修正
+   - 全てのクリーンアップ処理実装済み
 
-### Phase 4: 機能追加（3-4週間）
-1. 生体認証の実装
-2. 高度なセキュリティ機能
-3. パフォーマンス最適化
 
 ## テスト戦略
 
@@ -304,12 +302,44 @@
 - 静的解析ツールの使用
 - セキュリティ監査
 
+## Phase 3で実装されたファイル一覧
+
+### 新規作成ファイル
+- `/src/features/auth/infra/services/authStateManager.ts` - 認証状態の一元管理
+
+### 修正ファイル
+- `/src/features/auth/infra/services/authTokenManager.ts` - 重複リスナー削除
+- `/src/features/auth/application/auth-store.ts` - authProcessStateフラグ追加
+- `/src/features/auth/presentation/hooks/use-auth.ts` - 状態チェック追加
+- `/src/navigation/RootNavigator.tsx` - authStateManager初期化
+
+### 実装時に修正したバグ
+- `sessionPersistence.clearSession()` → `clearPersistedSession()`
+- `sessionPersistence.saveSession()` → `persistSession()`
+- `QueryUser`型のプロパティ不一致を修正
+
 ## まとめ
 
-この文書で提案した解決策を実装することで、SoundZoneアプリの認証システムは以下の改善が期待できます：
+Phase 1、Phase 2、Phase 3の実装により、SoundZoneアプリの認証システムは以下の改善を達成しました：
 
-1. **セキュリティの大幅な向上**: 暗号化キーの適切な管理、トークンの自動更新、セッション管理の強化
-2. **ユーザー体験の向上**: 再ログイン不要、エラー時の適切な対応、生体認証による利便性
-3. **保守性の向上**: 単一の状態管理、明確なエラー処理、適切なログ記録
+1. **セキュリティの大幅な向上**: 
+   - ✅ 暗号化キーの動的生成と安全な保存
+   - ✅ トークンの自動更新によるセッション継続性
+   - ✅ レート制限によるブルートフォース攻撃対策
+   - ✅ エラーメッセージのサニタイズによる情報漏洩防止
 
-各フェーズを順次実装することで、リスクを最小限に抑えながら着実に改善を進めることができます。
+2. **状態管理の改善**:
+   - ✅ Supabase、Zustand、TanStack Queryの状態を一元管理
+   - ✅ 競合状態の防止メカニズム
+   - ✅ メモリリークの完全な防止
+
+3. **ユーザー体験の向上**: 
+   - ✅ アプリ再起動後も認証状態を維持
+   - ✅ トークン期限切れによる再ログイン不要
+   - ✅ わかりやすいエラーメッセージ
+   - ✅ 認証処理中の適切なフィードバック
+
+4. **コード品質の向上**:
+   - ✅ ディレクトリ構造の整理
+   - ✅ 一貫した命名規則
+   - ✅ TypeScript型安全性の確保

@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { devtools, persist, subscribeWithSelector } from 'zustand/middleware';
 import { immer } from 'zustand/middleware/immer';
-import { storage } from '../../../shared/infra/storage/mmkvStorage';
+import { mmkvStorage } from '../../../shared/infra/storage/mmkvStorage';
 import { QueryUser } from '../domain/entities/User';
 
 // Application Layer: ビジネスロジックと状態管理
@@ -9,6 +9,9 @@ export interface AuthState {
   // サーバー状態（TanStack Queryと同期）
   user: QueryUser | null;
   isAuthenticated: boolean;
+  
+  // 認証プロセスの状態管理（競合状態防止用）
+  authProcessState: 'IDLE' | 'SIGNING_IN' | 'SIGNING_UP' | 'SIGNING_OUT';
   
   // UI状態（フォーム・モーダルなど）
   ui: {
@@ -69,6 +72,9 @@ export interface AuthActions {
   setUser: (user: QueryUser | null) => void;
   setAuthenticated: (isAuthenticated: boolean) => void;
   
+  // 認証プロセス状態
+  setAuthProcessState: (state: AuthState['authProcessState']) => void;
+  
   // ログインフォーム
   updateLoginForm: (updates: Partial<AuthState['ui']['loginForm']>) => void;
   setLoginError: (field: keyof AuthState['ui']['loginForm']['errors'], error?: string) => void;
@@ -111,6 +117,7 @@ export interface AuthActions {
 const initialState: AuthState = {
   user: null,
   isAuthenticated: false,
+  authProcessState: 'IDLE',
   ui: {
     loginForm: {
       email: '',
@@ -144,19 +151,7 @@ const initialState: AuthState = {
   },
 };
 
-// カスタムストレージアダプター（MMKV用）
-const mmkvStorage = {
-  getItem: (name: string) => {
-    const value = storage.getString(name);
-    return value ? JSON.parse(value) : null;
-  },
-  setItem: (name: string, value: any) => {
-    storage.set(name, JSON.stringify(value));
-  },
-  removeItem: (name: string) => {
-    storage.delete(name);
-  },
-};
+// mmkvStorageはインポート済みなので、ここでの定義は不要
 
 // メインストア（middleware順序: devtools → persist → immer → subscribeWithSelector）
 export const useAuthStore = create<AuthState & AuthActions>()(
@@ -182,6 +177,12 @@ export const useAuthStore = create<AuthState & AuthActions>()(
           setAuthenticated: (isAuthenticated) =>
             set((state) => {
               state.isAuthenticated = isAuthenticated;
+            }),
+
+          // 認証プロセス状態
+          setAuthProcessState: (authProcessState) =>
+            set((state) => {
+              state.authProcessState = authProcessState;
             }),
 
           // ログインフォーム（immerによる簡潔な更新）
@@ -349,6 +350,7 @@ export const useAuthStore = create<AuthState & AuthActions>()(
               // 設定以外をリセット
               state.user = null;
               state.isAuthenticated = false;
+              state.authProcessState = 'IDLE';
               state.ui = initialState.ui;
               // 設定は保持（lastLoginEmailも含む）
             }),
@@ -373,6 +375,7 @@ export const useAuthStore = create<AuthState & AuthActions>()(
 // セレクター（再描画最適化 - shallow比較を使用）
 export const useAuthUser = () => useAuthStore((state) => state.user);
 export const useIsAuthenticated = () => useAuthStore((state) => state.isAuthenticated);
+export const useAuthProcessState = () => useAuthStore((state) => state.authProcessState);
 
 // 複数の値を返すセレクターはshallow比較を使用
 export const useLoginForm = () => useAuthStore((state) => state.ui.loginForm);
@@ -391,6 +394,7 @@ export const useAuthActions = () => {
   return {
     setUser: store.setUser,
     setAuthenticated: store.setAuthenticated,
+    setAuthProcessState: store.setAuthProcessState,
     updateLoginForm: store.updateLoginForm,
     setLoginError: store.setLoginError,
     clearLoginForm: store.clearLoginForm,
@@ -422,6 +426,7 @@ export const useAuthActions = () => {
 // 個別のアクションセレクター（後方互換性のため維持）
 export const useSetUser = () => useAuthStore((state) => state.setUser);
 export const useSetAuthenticated = () => useAuthStore((state) => state.setAuthenticated);
+export const useSetAuthProcessState = () => useAuthStore((state) => state.setAuthProcessState);
 export const useUpdateLoginForm = () => useAuthStore((state) => state.updateLoginForm);
 export const useSetLoginError = () => useAuthStore((state) => state.setLoginError);
 export const useClearLoginForm = () => useAuthStore((state) => state.clearLoginForm);
