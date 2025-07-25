@@ -7,6 +7,23 @@
 - Subscriptionの不適切なクリーンアップ
 - 大量のマーカー表示時のパフォーマンス低下
 
+### 実装された修正 ✅ [2025-07-25]
+
+#### useMapWithLocationのメモリリーク修正
+**問題**: `previousLocationRef.current`がコンポーネントアンマウント時にクリアされていない
+
+**修正内容**: 
+```typescript
+// コンポーネントのアンマウント時にrefをクリア
+useEffect(() => {
+  return () => {
+    previousLocationRef.current = null;
+  };
+}, []);
+```
+
+**修正ファイル**: `/src/features/map/presentation/hooks/useMapWithLocation.ts`
+
 ### 解決策
 
 #### 3.1 PanResponderの適切な管理

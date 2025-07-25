@@ -1,13 +1,74 @@
 # レイヤー機能の問題と解決策
 
-## 3. メモリリーク問題
+## 問題の概要とPhase分け
+
+レイヤー機能には以下の問題があり、優先度と依存関係を考慮して3つのPhaseに分けて対応します：
+
+### Phase 1: メモリリークの修正（緊急度：高）✅ [2025-07-25 完了]
+- **問題**: Zustand subscribeのクリーンアップ不足によるメモリリーク
+- **影響**: アプリの長時間使用でメモリ使用量が増加、パフォーマンス低下
+- **期間**: 1-2日
+
+### Phase 2: パフォーマンス最適化（緊急度：中）
+- **問題**: 重複API呼び出し、不要な再レンダリング、楽観的更新の競合
+- **影響**: レスポンスの遅延、無駄なネットワーク使用
+- **期間**: 3-4日
+
+### Phase 3: 既に解決済みの問題（完了）
+- ✅ レイヤー切替時のピン消失問題
+- ✅ 音声再生制御問題（AudioPin）
+
+---
+
+## Phase 1: メモリリーク問題の解決
 
 ### 問題の詳細
-useEffect内でのsubscribe処理にクリーンアップ関数がなく、コンポーネントのアンマウント時にリスナーが残る。
+useEffect内でのZustand subscribeにクリーンアップ関数がなく、コンポーネントのアンマウント時にリスナーが残る。これによりメモリリークが発生し、アプリのパフォーマンスが徐々に低下する。
 
-### 解決策
+### 影響箇所
+- `src/features/layers/presentation/hooks/useLayerSelection.ts`
+- その他Zustand subscribeを使用している全てのカスタムフック
 
-#### 実装案: 適切なクリーンアップの実装
+### 実装した解決策 ✅ [2025-07-25]
+
+#### 1. 現状の調査結果
+- 現在のコードベースではZustand subscribeメソッドを直接使用している箇所は見つからなかった
+- しかし、将来的な実装で問題が発生することを防ぐため、予防的な対策を実施
+
+#### 2. 実装した内容
+1. **ガイドラインドキュメントの作成** ✅
+   - `/docs/ZustandSubscribeGuideline.md`を作成
+   - メモリリークの原因と正しい実装方法を記載
+   - よくある間違いとベストプラクティスを明記
+
+2. **サンプル実装の作成** ✅
+   - `/src/features/layers/presentation/hooks/useLayerSubscriptionExample.ts`を作成
+   - 正しいクリーンアップ方法を示す3つのパターンを実装
+   - StateManagement.mdに準拠した実装例
+
+#### 3. 既存コードの確認
+- useLayerSelectionフックは通常のセレクターフックのみを使用（問題なし）
+- 他のレイヤー関連フックもsubscribeを使用していない（問題なし）
+
+### 今後の実装での注意点
+
+1. **subscribeを使用する前に検討**
+   - 通常のセレクターフック `useStore((state) => state.value)` で十分か確認
+   - subscribeは副作用の実行が必要な場合のみ使用
+
+2. **必ずクリーンアップを実装**
+   ```typescript
+   useEffect(() => {
+     const unsubscribe = store.subscribe(selector, callback);
+     return () => unsubscribe();
+   }, []);
+   ```
+
+3. **ガイドラインに従う**
+   - `/docs/ZustandSubscribeGuideline.md` を参照
+   - `/src/features/layers/presentation/hooks/useLayerSubscriptionExample.ts` のパターンを参考に
+
+### 正しい実装例（将来subscribeが必要になった場合）
 ```typescript
 // src/features/layers/presentation/hooks/useLayerSelection.ts
 export const useLayerSelection = () => {
@@ -50,7 +111,9 @@ export function useStoreSubscription<T>(
 }
 ```
 
-## 4. パフォーマンス問題
+---
+
+## Phase 2: パフォーマンス問題の解決
 
 ### 問題の詳細
 - 重複したAPI呼び出し
@@ -136,30 +199,3 @@ export const useCreateLayer = () => {
   });
 };
 ```
-
-## 実装優先順位
-
-1. **高優先度**: レイヤー切替時のピン消失問題（ユーザー体験に直接影響）✅ [解決済み]
-2. **高優先度**: 音声再生制御問題（機能の基本的な動作）✅ [解決済み]
-3. **中優先度**: メモリリーク問題（長期的な安定性）✅ [AudioPinは解決済み]
-4. **低優先度**: パフォーマンス最適化（現時点では致命的ではない）
-
-## テスト方針
-
-各解決策実装後は以下のテストを実施：
-
-1. **ピン消失問題**
-   - レイヤー切替時にピンが消えないことを確認
-   - 切替前後でピンの表示が維持されることを確認
-
-2. **音声再生制御**
-   - モーダルクローズ時に音声が停止することを確認
-   - 別のピンを選択時に前の音声が停止することを確認
-
-3. **メモリリーク**
-   - React DevToolsのProfilerでコンポーネントのマウント/アンマウントを確認
-   - Chrome DevToolsのMemoryプロファイラーでリークを確認
-
-4. **パフォーマンス**
-   - React Query DevToolsでクエリの実行回数を確認
-   - React DevToolsでレンダリング回数を確認

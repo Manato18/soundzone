@@ -1,5 +1,55 @@
 # SoundZone - 変更履歴
 
+## [2025-07-25] メモリリーク調査・修正
+
+### 概要
+AudioPin、Map、Location、Layer機能のメモリリーク調査を実施し、発見された問題を修正しました。また、将来的なメモリリーク防止のためのガイドラインとサンプル実装を作成しました。
+
+### 調査結果と対応
+
+#### 1. AudioPin機能 ✅
+- **結果**: メモリリークなし
+- **詳細**: EventListenerが適切にクリーンアップされている
+
+#### 2. Map機能 ❌ → ✅
+- **問題**: `useMapWithLocation`の`previousLocationRef`が未クリーンアップ
+- **修正**: useEffectのクリーンアップ関数でnullをセット
+- **修正ファイル**: `/src/features/map/presentation/hooks/useMapWithLocation.ts`
+
+#### 3. Location機能 ✅
+- **結果**: メモリリークなし
+- **詳細**: subscriptionが適切にクリーンアップされている
+
+#### 4. Layer機能 ✅
+- **結果**: 現在subscribeを使用していない（問題なし）
+- **対策**: 予防的なガイドラインとサンプルを作成
+
+### 作成したドキュメント
+
+1. **`/docs/ZustandSubscribeGuideline.md`**
+   - Zustand subscribeのメモリリーク防止ガイドライン
+   - 正しい実装方法とよくある間違い
+
+2. **`/docs/MemoryLeakFixReport.md`**
+   - 今回の調査・修正の詳細レポート
+   - 推奨事項と今後の対策
+
+### 作成したサンプル実装
+
+1. **`/src/features/layers/presentation/hooks/useLayerSubscriptionExample.ts`**
+   - Zustand subscribeの正しい使用例
+   - 3つの実装パターン（基本、条件付き、最適化）
+
+### 技術的な改善点
+- メモリリークの完全な防止
+- 将来的な実装での問題防止
+- コードレビューでの確認ポイントの明確化
+
+### 次のステップ
+残っている高優先度の問題：
+1. 位置情報の状態不整合（stableLocation、heading）
+2. エラーハンドリング不足（権限拒否、APIリトライ）
+
 ## [2025-07-25] レイヤー切替時のピン表示最適化（Phase 2）
 
 ### 概要

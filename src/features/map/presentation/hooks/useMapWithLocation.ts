@@ -75,6 +75,13 @@ export const useMapWithLocation = (mapRef: React.RefObject<MapView | null>) => {
     }
   };
   
+  // コンポーネントのアンマウント時にrefをクリア
+  useEffect(() => {
+    return () => {
+      previousLocationRef.current = null;
+    };
+  }, []);
+  
   return {
     centerOnUserLocation,
     isFollowingUser,
