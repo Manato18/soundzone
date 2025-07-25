@@ -8,6 +8,7 @@ import 'react-native-gesture-handler';
 import { queryClient } from './src/shared/presenter/queries/queryClient';
 import RootNavigator from './src/navigation/RootNavigator';
 import { AppInitializer } from './src/shared/infra/initialization/appInitializer';
+import { LayersProvider } from './src/features/layers/presentation/providers/LayersProvider';
 
 export default function App() {
   const [loaded] = useFonts({
@@ -36,8 +37,10 @@ export default function App() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <RootNavigator />
-      <StatusBar style="auto" />
+      <LayersProvider>
+        <RootNavigator />
+        <StatusBar style="auto" />
+      </LayersProvider>
     </QueryClientProvider>
   );
 } 

@@ -137,11 +137,25 @@ export const useLayersStore = create<LayersStore>()(
           }),
           
           initializeSelectedLayers: () => set((state) => {
-            // デフォルトレイヤーIDがある場合はそれを使用、なければ全レイヤーを選択
+            // 既に選択されたレイヤーがある場合（永続化データから復元された場合）はスキップ
+            if (state.selectedLayerIds.length > 0) {
+              if (process.env.NODE_ENV === 'development') {
+                console.log('[layers-store] Skip initialization - already have selected layers:', state.selectedLayerIds);
+              }
+              return;
+            }
+            
+            // 初回起動時のみ初期化
             if (state.settings.defaultLayerIds.length > 0) {
               state.selectedLayerIds = state.settings.defaultLayerIds;
+              if (process.env.NODE_ENV === 'development') {
+                console.log('[layers-store] Initialized with default layers:', state.settings.defaultLayerIds);
+              }
             } else if (state.settings.showAllByDefault) {
               state.selectedLayerIds = state.availableLayers.map(layer => layer.id);
+              if (process.env.NODE_ENV === 'development') {
+                console.log('[layers-store] Initialized with all layers:', state.selectedLayerIds);
+              }
             }
           }),
           
