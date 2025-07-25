@@ -12,15 +12,10 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import TrackPlayer, {
-  State,
-  Track,
-  usePlaybackState,
-  useProgress
-} from 'react-native-track-player';
+import { useProgress } from 'react-native-track-player';
 import { getLayersByIds } from '../src/features/layers/domain/utils/layerUtils';
-import { trackPlayerSetup } from '../src/shared/services/trackPlayerSetup';
 import { formatDuration, getRelativeTime } from '../src/shared/utils/timeUtils';
+import { useAudioPlayer } from '../src/features/audioPin/presentation/hooks/useAudioPlayer';
 
 interface AudioData {
   id: string;
@@ -31,6 +26,9 @@ interface AudioData {
   description: string;
   layerIds: string[]; // レイヤー情報を追加
   createdAt?: Date; // 投稿日時（オプショナル）
+  // AudioPinとの互換性のため、以下のプロパティを追加（モーダルでは使用しない）
+  latitude: number;
+  longitude: number;
 }
 
 interface AudioPlayerModalProps {
@@ -60,8 +58,20 @@ export default function AudioPlayerModal({ visible, onClose, audioData }: AudioP
   // マウント状態を追跡してメモリリークを防ぐ
   const isMountedRef = useRef(false);
   
-  // react-native-track-playerのフックを使用
-  const playbackState = usePlaybackState();
+  // useAudioPlayerフックを使用（StateManagement.mdに準拠）
+  const {
+    isPlaying,
+    currentTime,
+    duration,
+    play,
+    stop,
+    togglePlayback,
+    skipBackward,
+    skipForward,
+    settings,
+  } = useAudioPlayer();
+  
+  // react-native-track-playerの進捗情報（UI表示用）
   const progress = useProgress();
 
   // マウント・アンマウント管理
@@ -69,6 +79,14 @@ export default function AudioPlayerModal({ visible, onClose, audioData }: AudioP
     isMountedRef.current = true;
     return () => {
       isMountedRef.current = false;
+    };
+  }, []);
+
+  // コンポーネントアンマウント時のクリーンアップ
+  useEffect(() => {
+    return () => {
+      // useAudioPlayerフックが内部でクリーンアップを処理
+      // 追加のクリーンアップが必要な場合はここに記述
     };
   }, []);
 
@@ -144,9 +162,20 @@ export default function AudioPlayerModal({ visible, onClose, audioData }: AudioP
         
         // panResponder内での状態更新を安全に実行
         const performTransition = (targetState: keyof typeof MODAL_STATES) => {
-          setTimeout(() => {
+          setTimeout(async () => {
             if (isMountedRef.current) {
-              animateToState(targetState);
+              if (targetState === 'CLOSED') {
+                // CLOSEDの場合は音声を停止してから閉じる
+                try {
+                  await stop();
+                  animateToState('CLOSED');
+                } catch (error) {
+                  console.error('Error closing modal:', error);
+                  animateToState('CLOSED');
+                }
+              } else {
+                animateToState(targetState);
+              }
             }
           }, 0);
         };
@@ -179,7 +208,7 @@ export default function AudioPlayerModal({ visible, onClose, audioData }: AudioP
         }
       },
     }),
-    [slideAnim, animateToState]
+    [slideAnim, animateToState, stop]
   );
 
   // モーダルオープンアニメーション（下半分から開始）
@@ -199,59 +228,47 @@ export default function AudioPlayerModal({ visible, onClose, audioData }: AudioP
   }, [slideAnim, safeSetState]);
 
   // モーダルクローズアニメーション
-  const closeModal = useCallback(() => {
-    animateToState('CLOSED');
-  }, [animateToState]);
+  const closeModal = useCallback(async () => {
+    try {
+      // useAudioPlayerのstop関数を使用
+      await stop();
+      
+      // アニメーションで閉じる
+      animateToState('CLOSED');
+    } catch (error) {
+      console.error('Error closing audio modal:', error);
+      // エラーが発生してもモーダルは閉じる
+      animateToState('CLOSED');
+    }
+  }, [animateToState, stop]);
 
   // バックドロップタップでモーダルを閉じる
   const handleBackdropPress = () => {
     closeModal();
   };
 
-  // 再生状態の管理
-  const isPlaying = playbackState.state === State.Playing;
-  const isBuffering = playbackState.state === State.Buffering || 
-                     playbackState.state === State.Loading ||
-                     isLoading;
+  // 再生状態の管理（isBufferingはローディング状態のみ）
+  const isBuffering = isLoading;
 
-  // TrackPlayerの初期化と音声読み込み
-  const setupAndLoadAudio = useCallback(async () => {
+  // 音声の読み込みと再生
+  const loadAndPlayAudio = useCallback(async () => {
     if (!audioData || !isMountedRef.current) return;
 
     try {
-      // 安全な状態更新
       safeSetState(() => {
         setIsLoading(true);
       });
       
-      // TrackPlayerを初期化
-      const isReady = await trackPlayerSetup();
-      if (!isReady || !isMountedRef.current) {
-        console.error('TrackPlayer setup failed');
-        return;
+      // useAudioPlayerフックのplay関数を使用
+      if (settings.autoPlayOnPinTap) {
+        await play(audioData);
       }
-
-      // 既存のトラックをクリア
-      await TrackPlayer.reset();
-
-      // 音声ファイルを追加
-      const track: Track = {
-        id: audioData.id,
-        url: audioData.audioUrl, // ローカルファイル（require）も対応
-        title: audioData.title,
-        artist: audioData.userName,
-        artwork: audioData.userImage,
-      };
-
-      await TrackPlayer.add(track);
       
-      // 安全な状態更新
       if (isMountedRef.current) {
         safeSetState(() => {
           setIsPlayerReady(true);
         });
       }
-
     } catch (error) {
       console.error('音声設定エラー:', error);
     } finally {
@@ -261,7 +278,7 @@ export default function AudioPlayerModal({ visible, onClose, audioData }: AudioP
         });
       }
     }
-  }, [audioData, safeSetState]);
+  }, [audioData, play, settings.autoPlayOnPinTap, safeSetState]);
 
   // visibleとaudioDataの変化を監視（安全な状態更新）
   useEffect(() => {
@@ -272,49 +289,22 @@ export default function AudioPlayerModal({ visible, onClose, audioData }: AudioP
       setTimeout(() => {
         if (isMountedRef.current) {
           openModal();
-          setupAndLoadAudio();
+          loadAndPlayAudio();
         }
       }, 0);
     }
-  }, [visible, audioData, openModal, setupAndLoadAudio]);
+  }, [visible, audioData, openModal, loadAndPlayAudio]);
 
   // currentStateRefを同期
   useLayoutEffect(() => {
     currentStateRef.current = currentState;
   }, [currentState]);
 
-  // 音声再生/停止
-  const togglePlayback = async () => {
-    try {
-      if (playbackState.state === State.Playing) {
-        await TrackPlayer.pause();
-      } else {
-        await TrackPlayer.play();
-      }
-    } catch (error) {
-      console.error('再生エラー:', error);
-    }
-  };
+  // バックグラウンド処理はuseAudioPlayerフックで管理されるため削除
 
-  // 10秒戻る
-  const skipBackward = async () => {
-    try {
-      const newPosition = Math.max(0, progress.position - 10);
-      await TrackPlayer.seekTo(newPosition);
-    } catch (error) {
-      console.error('スキップエラー:', error);
-    }
-  };
+  // togglePlaybackはuseAudioPlayerフックから提供される関数を使用
 
-  // 10秒進む
-  const skipForward = async () => {
-    try {
-      const newPosition = Math.min(progress.duration, progress.position + 10);
-      await TrackPlayer.seekTo(newPosition);
-    } catch (error) {
-      console.error('スキップエラー:', error);
-    }
-  };
+  // skipBackwardとskipForwardはuseAudioPlayerフックから提供される関数を使用
 
   if (!audioData) return null;
 

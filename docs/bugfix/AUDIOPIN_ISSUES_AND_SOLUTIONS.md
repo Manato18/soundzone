@@ -3,7 +3,28 @@
 ## 概要
 AudioPin機能の現在の実装には、メモリリーク、状態管理の不整合、UXの問題など、複数の重大な問題が存在します。本ドキュメントでは、これらの問題を詳細に分析し、具体的な解決策を提案します。
 
-## 1. 音声再生のメモリリーク問題
+## フェーズ分類
+### Phase 1 (即座の修正 - 緊急度高)
+- **1. 音声再生のメモリリーク問題**: モーダルを閉じても音声が再生され続ける重大な問題
+  - AudioPlayerModalのクリーンアップ処理追加
+  - closeModal関数での音声停止実装
+  - バックグラウンド時の音声一時停止
+
+### Phase 2 (中期改善 - 安定性向上)
+- **2. レイヤー切替時のピン消失問題**: UXに影響する表示の問題
+  - クエリキー最適化
+  - 楽観的更新の実装
+- **3. 状態管理の不整合**: 音声とUIの同期問題
+  - AudioServiceシングルトンの実装
+  - Zustandストアへの音声状態統合
+
+### Phase 3 (長期改善 - アーキテクチャ最適化)
+- **4. リソース管理の欠如**: 複数操作時の制御問題
+  - リクエストのデバウンスとキャンセル
+  - リソースプール管理システムの実装
+  - 完全なエラーハンドリング
+
+## 1. 音声再生のメモリリーク問題 【Phase 1】
 
 ### 問題の詳細
 - **場所**: `components/AudioPlayerModal.tsx`
@@ -13,106 +34,7 @@ AudioPin機能の現在の実装には、メモリリーク、状態管理の不
   - アプリのメモリ使用量が増加し続ける
   - バックグラウンドでも音声が再生される
 
-### 根本原因
-1. `closeModal`関数（202-204行目）がアニメーションのみを処理し、音声を停止しない
-2. コンポーネントのアンマウント時にクリーンアップ処理がない
-3. TrackPlayerのライフサイクル管理が不適切
-
-### 解決策
-
-#### 1.1 即座の修正（短期対策）
-```typescript
-// AudioPlayerModal.tsx に以下を追加
-
-// クリーンアップ用のuseEffect
-useEffect(() => {
-  return () => {
-    // コンポーネントアンマウント時の処理
-    TrackPlayer.stop();
-    TrackPlayer.reset();
-  };
-}, []);
-
-// closeModal関数の改修
-const closeModal = useCallback(async () => {
-  try {
-    await TrackPlayer.stop();
-    await TrackPlayer.reset();
-    animateToState('CLOSED');
-    // モーダル状態のリセット
-    if (onClose) onClose();
-  } catch (error) {
-    console.error('Error closing audio modal:', error);
-  }
-}, [animateToState, onClose]);
-
-// バックグラウンド対応
-useEffect(() => {
-  const handleAppStateChange = (nextAppState: AppStateStatus) => {
-    if (nextAppState === 'background') {
-      TrackPlayer.pause();
-    }
-  };
-  
-  const subscription = AppState.addEventListener('change', handleAppStateChange);
-  return () => subscription.remove();
-}, []);
-```
-
-#### 1.2 長期的な解決策（アーキテクチャ改善）
-グローバル音声サービスを実装し、シングルトンパターンで管理：
-
-```typescript
-// services/AudioService.ts
-class AudioService {
-  private static instance: AudioService;
-  private isInitialized = false;
-  
-  static getInstance(): AudioService {
-    if (!AudioService.instance) {
-      AudioService.instance = new AudioService();
-    }
-    return AudioService.instance;
-  }
-  
-  async initialize() {
-    if (this.isInitialized) return;
-    
-    await TrackPlayer.setupPlayer();
-    await TrackPlayer.updateOptions({
-      stopWithApp: true,
-      capabilities: [
-        Capability.Play,
-        Capability.Pause,
-        Capability.Stop,
-      ],
-    });
-    
-    this.isInitialized = true;
-  }
-  
-  async play(audioUrl: string, metadata?: any) {
-    await this.stop(); // 既存の音声を停止
-    await TrackPlayer.add({
-      url: audioUrl,
-      ...metadata,
-    });
-    await TrackPlayer.play();
-  }
-  
-  async stop() {
-    await TrackPlayer.stop();
-    await TrackPlayer.reset();
-  }
-  
-  async cleanup() {
-    await this.stop();
-    // 必要に応じて他のクリーンアップ処理
-  }
-}
-```
-
-## 2. レイヤー切替時のピン消失問題
+## 2. レイヤー切替時のピン消失問題 【Phase 2】
 
 ### 問題の詳細
 - **場所**: `src/features/audioPin/presentation/hooks/read/useAudioPinsQuery.ts`
@@ -121,77 +43,7 @@ class AudioService {
   - ユーザー体験が悪い（ちらつき）
   - 不要なAPIリクエストが発生
 
-### 根本原因
-- queryKeyに`layerIds`が含まれているため、レイヤー変更時に新しいクエリとして扱われる
-- React Queryのキャッシュが効かない
-
-### 解決策
-
-#### 2.1 クエリキー最適化
-```typescript
-// useAudioPinsQuery.ts の改修案
-
-export const useAudioPinsQuery = ({ bounds, layerIds }: UseAudioPinsQueryParams) => {
-  // 基本クエリ（レイヤーIDを含めない）
-  const baseQuery = useQuery({
-    queryKey: ['audioPins', { bounds }],
-    queryFn: () => queryFunction.audioPins({ bounds }),
-    staleTime: 5 * 60 * 1000, // 5分
-    cacheTime: 10 * 60 * 1000, // 10分
-  });
-  
-  // クライアントサイドでのフィルタリング
-  const filteredData = useMemo(() => {
-    if (!baseQuery.data) return [];
-    if (!layerIds || layerIds.length === 0) return baseQuery.data;
-    
-    return baseQuery.data.filter(pin => 
-      layerIds.includes(pin.layerId)
-    );
-  }, [baseQuery.data, layerIds]);
-  
-  return {
-    ...baseQuery,
-    data: filteredData,
-  };
-};
-```
-
-#### 2.2 楽観的更新の実装
-```typescript
-// レイヤー変更時の楽観的更新
-const handleLayerChange = (newLayerIds: string[]) => {
-  // 即座にUIを更新
-  queryClient.setQueryData(['audioPins', { bounds }], (old: AudioPin[]) => {
-    if (!old) return [];
-    return old.filter(pin => newLayerIds.includes(pin.layerId));
-  });
-  
-  // その後でレイヤーIDを更新
-  setLayerIds(newLayerIds);
-};
-```
-
-#### 2.3 プリフェッチ戦略
-```typescript
-// 頻繁に使用されるレイヤーの組み合わせをプリフェッチ
-const prefetchCommonLayers = async () => {
-  const commonLayerCombinations = [
-    [], // すべてのレイヤー
-    ['layer1'], // 人気レイヤー1
-    ['layer2'], // 人気レイヤー2
-  ];
-  
-  for (const layers of commonLayerCombinations) {
-    await queryClient.prefetchQuery({
-      queryKey: ['audioPins', { bounds, layerIds: layers }],
-      queryFn: () => queryFunction.audioPins({ bounds, layerIds: layers }),
-    });
-  }
-};
-```
-
-## 3. 状態管理の不整合
+## 3. 状態管理の不整合 【Phase 2】
 
 ### 問題の詳細
 - **症状**:
@@ -199,126 +51,7 @@ const prefetchCommonLayers = async () => {
   - `playingPinId`の更新とTrackPlayerの状態が同期しない
   - モーダルの開閉と音声再生が独立して動作
 
-### 解決策
-
-#### 3.1 統合された音声状態管理
-```typescript
-// audioPin-store.ts の拡張
-
-interface AudioPinState {
-  // 既存の状態
-  pins: AudioPin[];
-  selectedPin: AudioPin | null;
-  playingPinId: string | null;
-  
-  // 新規追加
-  audioState: 'idle' | 'loading' | 'playing' | 'paused' | 'stopped' | 'error';
-  audioProgress: {
-    position: number;
-    duration: number;
-    buffered: number;
-  };
-  
-  // 音声制御アクション
-  playAudio: (pin: AudioPin) => Promise<void>;
-  pauseAudio: () => Promise<void>;
-  resumeAudio: () => Promise<void>;
-  stopAudio: () => Promise<void>;
-  seekTo: (position: number) => Promise<void>;
-  
-  // 状態同期アクション
-  syncAudioState: () => Promise<void>;
-}
-
-// 実装例
-const useAudioPinStore = create<AudioPinState>((set, get) => ({
-  // ... 既存の実装
-  
-  playAudio: async (pin: AudioPin) => {
-    try {
-      set({ audioState: 'loading', selectedPin: pin });
-      
-      // AudioServiceを使用
-      const audioService = AudioService.getInstance();
-      await audioService.play(pin.audioUrl, {
-        title: pin.title,
-        artist: pin.userName,
-      });
-      
-      set({ 
-        audioState: 'playing', 
-        playingPinId: pin.id,
-      });
-    } catch (error) {
-      set({ audioState: 'error' });
-      throw error;
-    }
-  },
-  
-  stopAudio: async () => {
-    const audioService = AudioService.getInstance();
-    await audioService.stop();
-    
-    set({ 
-      audioState: 'idle',
-      playingPinId: null,
-      audioProgress: { position: 0, duration: 0, buffered: 0 },
-    });
-  },
-  
-  // TrackPlayerイベントリスナーで状態を同期
-  syncAudioState: async () => {
-    const state = await TrackPlayer.getState();
-    const progress = await TrackPlayer.getProgress();
-    
-    set({
-      audioState: mapTrackPlayerState(state),
-      audioProgress: {
-        position: progress.position,
-        duration: progress.duration,
-        buffered: progress.buffered,
-      },
-    });
-  },
-}));
-```
-
-#### 3.2 イベント駆動アーキテクチャ
-```typescript
-// hooks/useAudioEvents.ts
-export const useAudioEvents = () => {
-  const { syncAudioState, stopAudio } = useAudioPinStore();
-  
-  useEffect(() => {
-    // TrackPlayerイベントを監視
-    const progressListener = TrackPlayer.addEventListener(
-      Event.PlaybackProgressUpdated,
-      syncAudioState
-    );
-    
-    const stateListener = TrackPlayer.addEventListener(
-      Event.PlaybackState,
-      syncAudioState
-    );
-    
-    const errorListener = TrackPlayer.addEventListener(
-      Event.PlaybackError,
-      (error) => {
-        console.error('Playback error:', error);
-        stopAudio();
-      }
-    );
-    
-    return () => {
-      progressListener.remove();
-      stateListener.remove();
-      errorListener.remove();
-    };
-  }, [syncAudioState, stopAudio]);
-};
-```
-
-## 4. リソース管理の欠如
+## 4. リソース管理の欠如 【Phase 3】
 
 ### 問題の詳細
 - **症状**:
@@ -326,109 +59,153 @@ export const useAudioEvents = () => {
   - ネットワークリクエストのキャンセル処理なし
   - メモリリークの可能性
 
-### 解決策
+## 5. 実装状況
 
-#### 4.1 リクエストのデバウンスとキャンセル
-```typescript
-// hooks/useAudioPinSelection.ts
-export const useAudioPinSelection = () => {
-  const abortControllerRef = useRef<AbortController | null>(null);
-  const selectionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  
-  const selectPin = useCallback((pin: AudioPin) => {
-    // 既存のリクエストをキャンセル
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-    }
-    
-    // タイムアウトをクリア
-    if (selectionTimeoutRef.current) {
-      clearTimeout(selectionTimeoutRef.current);
-    }
-    
-    // デバウンス処理
-    selectionTimeoutRef.current = setTimeout(async () => {
-      abortControllerRef.current = new AbortController();
-      
-      try {
-        await loadAndPlayAudio(pin, {
-          signal: abortControllerRef.current.signal,
-        });
-      } catch (error) {
-        if (error.name !== 'AbortError') {
-          console.error('Audio loading error:', error);
-        }
-      }
-    }, 300); // 300msのデバウンス
-  }, []);
-  
-  // クリーンアップ
-  useEffect(() => {
-    return () => {
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-      }
-      if (selectionTimeoutRef.current) {
-        clearTimeout(selectionTimeoutRef.current);
-      }
-    };
-  }, []);
-  
-  return { selectPin };
-};
-```
+### Phase 1 実装完了 (2025-07-25)
 
-#### 4.2 リソースプール管理
-```typescript
-// services/ResourcePool.ts
-class AudioResourcePool {
-  private maxConcurrent = 1;
-  private activeRequests = new Set<AbortController>();
-  
-  async executeWithLimit<T>(
-    task: (signal: AbortSignal) => Promise<T>
-  ): Promise<T> {
-    // 既存のリクエストをすべてキャンセル
-    this.cancelAll();
-    
-    const controller = new AbortController();
-    this.activeRequests.add(controller);
-    
-    try {
-      const result = await task(controller.signal);
-      return result;
-    } finally {
-      this.activeRequests.delete(controller);
-    }
-  }
-  
-  cancelAll() {
-    this.activeRequests.forEach(controller => {
-      controller.abort();
-    });
-    this.activeRequests.clear();
-  }
-}
-```
+#### 実装内容
+1. **AudioPlayerModalのクリーンアップ処理追加** ✅
+   - コンポーネントアンマウント時に`TrackPlayer.stop()`と`reset()`を実行
+   - Zustandストアの`stopPlayback()`も呼び出して状態を同期
 
-## 5. 実装優先順位とロードマップ
+2. **closeModal関数での音声停止実装** ✅
+   - モーダルクローズ時に音声を確実に停止
+   - エラーハンドリングを追加
+   - Zustandストアとの状態同期
 
-### フェーズ1（即座の修正 - 1週間）
-1. AudioPlayerModalのクリーンアップ処理追加
-2. closeModal関数での音声停止実装
-3. バックグラウンド時の音声一時停止
+3. **バックグラウンド時の音声一時停止** ✅
+   - `AppState`リスナーを使用してバックグラウンド遷移を検知
+   - 再生中の音声を自動的に一時停止
 
-### フェーズ2（中期改善 - 2週間）
-1. AudioServiceシングルトンの実装
-2. Zustandストアへの音声状態統合
-3. レイヤー切替時のピン表示最適化
+#### 技術的詳細
+- **依存関係の追加**: `AppState`, `AppStateStatus`, `usePlaybackActions`, `useAudioPinStore`
+- **メモリリーク対策**: 非同期処理のエラーハンドリングとクリーンアップ
+- **状態管理の統合**: TrackPlayerとZustandストアの双方向同期
+
+### Phase 1 リファクタリング完了 (2025-07-25)
+
+#### StateManagement.md準拠の実装
+1. **AudioService（Infrastructure層）** ✅
+   - TrackPlayerの操作を抽象化
+   - シングルトンパターンで実装
+   - エラーハンドリングの強化
+
+2. **useAudioPlayerフック（Presentation層）** ✅
+   - Infrastructure層とApplication層を統合
+   - TrackPlayerイベントとZustandストアの同期
+   - バックグラウンド処理の一元管理
+
+3. **AudioPlayerModalの更新** ✅
+   - TrackPlayerの直接操作を削除
+   - useAudioPlayerフックを使用
+   - レイヤー責務に従った実装
+
+### Phase 1 追加修正 (2025-07-25)
+
+#### 実機検証で発見された問題の修正
+1. **モーダルスワイプ時の音声停止** ✅
+   - 問題: スワイプでモーダルを閉じても音声が停止しない
+   - 修正: `performTransition`で`CLOSED`時に`closeModal()`を呼ぶように変更
+
+2. **バックグラウンドからの再生位置保持** ✅
+   - 問題: バックグラウンドから復帰時に最初から再生される
+   - 修正: AudioServiceに`currentTrackId`を追加し、同じトラックの場合はリセットしない
+
+3. **ログアウト時のエラー対策** ✅
+   - 問題: TrackPlayer未初期化時のエラー
+   - 修正: 各メソッドに初期化チェックを追加
+
+## 6. 実装優先順位とロードマップ
+
+### フェーズ1（即座の修正 - 完了）
+1. ✅ AudioPlayerModalのクリーンアップ処理追加
+2. ✅ closeModal関数での音声停止実装
+3. ✅ バックグラウンド時の音声一時停止
+
+### Phase 2 実装完了 (2025-07-25)
+
+#### レイヤー切替時のピン消失問題の解決
+1. **クライアントサイドフィルタリング方式の採用** ✅
+   - 問題: queryKeyにlayerIdsが含まれているため、レイヤー変更時に新しいクエリとして扱われる
+   - 解決: 全ピンを取得し、クライアント側でフィルタリング
+
+#### 実装内容
+1. **useAudioPinsQueryの修正** ✅
+   - queryKeyからlayerIdsを削除
+   - 常に全てのピンを取得するように変更
+   - キャッシュが効率的に活用される
+
+2. **useFilteredAudioPinsフックの作成** ✅
+   - クライアントサイドでレイヤーフィルタリングを実装
+   - useMemoを使用して効率的にフィルタリング
+   - デバッグログの追加
+
+3. **既存フックの更新** ✅
+   - useAudioPinsをuseFilteredAudioPinsを使用するように変更
+   - 既存のインターフェースを維持
+   - 後方互換性を確保
+
+#### 技術的詳細
+- **パフォーマンス最適化**: useMemoによる再計算の最小化
+- **即座の反映**: レイヤー切替が遅延なく反映
+- **APIリクエスト削減**: レイヤー変更時の不要なリクエストを排除
+
+### フェーズ2（中期改善 - 完了）
+1. ✅ AudioServiceシングルトンの実装（Phase 1で完了）
+2. ✅ Zustandストアへの音声状態統合（Phase 1で完了）
+3. ✅ レイヤー切替時のピン表示最適化（Phase 2で完了）
 
 ### フェーズ3（長期改善 - 1ヶ月）
 1. 完全なリソース管理システムの実装
 2. エラーバウンダリの追加
 3. パフォーマンス最適化とテスト
 
-## 6. テスト戦略
+## Phase 3 実装検討結果 (2025-07-25)
+
+### 実装要否の検討
+
+Phase 3で懸念されていたリソース管理の問題について、現在の実装状況を精査した結果、**追加実装は不要**と判断しました。
+
+#### 既に解決済みの問題
+
+1. **複数ピンの高速タップで音声が重複再生** ✅
+   - `AudioService`の`currentTrackId`により、同じトラックの重複再生を防止
+   - 異なるトラックの場合は`reset()`により前の音声を確実に停止
+   - 実機テストでも問題なし
+
+2. **メモリリークの可能性** ✅
+   - Phase 1で適切なクリーンアップ処理を実装済み
+   - コンポーネントアンマウント時の処理も完備
+   - エラーハンドリングも充実
+
+3. **状態管理の不整合** ✅
+   - Phase 1のリファクタリングで解決済み
+   - TrackPlayerとZustandストアの同期が確立
+
+#### 未実装だが問題になっていない項目
+
+1. **ネットワークリクエストのキャンセル処理**
+   - React Queryの`signal`パラメータは未使用
+   - しかし、実機テストで頻繁な地図操作でも問題なし
+   - React Queryの内部キャッシュで十分機能している
+
+### 決定事項
+
+**現状維持を選択**
+
+理由：
+- 実機テストで高速操作や頻繁な操作でも安定動作を確認
+- 追加実装によるコードの複雑化リスクが、得られるメリットを上回る
+- 将来的に問題が発生した場合に、その時点で対応する方が効率的
+
+### 今後のモニタリング項目
+
+以下の問題が発生した場合は、Phase 3の実装を再検討：
+- パフォーマンスの著しい低下
+- ネットワークリクエストの過多によるエラー
+- ユーザーからの具体的な不具合報告
+
+## 7. テスト戦略
 
 ### ユニットテスト
 - AudioServiceの各メソッドのテスト

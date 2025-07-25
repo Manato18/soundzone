@@ -5,7 +5,7 @@ import {
   useModalVisible, 
   useAudioPinActions 
 } from '../../application/audioPin-store';
-import { useAudioPinsQuery } from './read/useAudioPinsQuery';
+import { useFilteredAudioPins } from './read/useFilteredAudioPins';
 
 interface UseAudioPinsParams {
   layerIds?: string[];
@@ -17,12 +17,12 @@ export const useAudioPins = (params?: UseAudioPinsParams) => {
   const modalVisible = useModalVisible();
   const { selectPin, clearSelectedPin } = useAudioPinActions();
   
-  // サーバーからピンデータを取得
+  // フィルタリングされたピンデータを取得
   const { 
     data: audioPins = [], 
     isLoading, 
     error 
-  } = useAudioPinsQuery({
+  } = useFilteredAudioPins({
     layerIds: params?.layerIds,
   });
 
