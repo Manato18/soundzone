@@ -5,6 +5,7 @@ import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { useAuth } from '../features/auth/presentation/hooks/use-auth';
 import { queryKeys } from '../shared/presenter/queries/queryClient';
 import { supabase } from '../shared/services/supabase';
+import { sessionPersistence } from '../features/auth/infra/services/sessionPersistence';
 import AppNavigator from './AppNavigator';
 import AuthNavigator from './AuthNavigator';
 
@@ -31,9 +32,19 @@ export default function RootNavigator() {
           // サインイン時も認証クエリを無効化して最新情報を取得
           console.log('User signed in, invalidating auth queries');
           await queryClient.invalidateQueries({ queryKey: queryKeys.auth.all });
+          
+          // セッションを永続化
+          if (session) {
+            await sessionPersistence.persistSession(session);
+          }
         } else if (event === 'TOKEN_REFRESHED') {
           // トークン更新時も最新情報を取得
           await queryClient.invalidateQueries({ queryKey: queryKeys.auth.all });
+          
+          // 更新されたセッションを永続化
+          if (session) {
+            await sessionPersistence.persistSession(session);
+          }
         }
       }
     );

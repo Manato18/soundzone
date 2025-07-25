@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { devtools, persist, subscribeWithSelector } from 'zustand/middleware';
 import { immer } from 'zustand/middleware/immer';
-import { storage } from '../../../shared/infra/storage/mmkvStorage';
+import { mmkvStorage } from '../../../shared/infra/storage/mmkvStorage';
 import { LocationError, UserLocationData } from '../domain/entities/Location';
 
 /**
@@ -156,18 +156,7 @@ export const useLocationStore = create<LocationStore>()(
       ),
       {
         name: 'location-settings',
-        storage: {
-          getItem: (name) => {
-            const value = storage.getString(name);
-            return value ? JSON.parse(value) : null;
-          },
-          setItem: (name, value) => {
-            storage.set(name, JSON.stringify(value));
-          },
-          removeItem: (name) => {
-            storage.delete(name);
-          },
-        },
+        storage: mmkvStorage,
         // 永続化対象：設定のみ（StateManagement.mdの規約に従う）
         partialize: (state) => ({
           settings: state.settings,

@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { devtools, persist, subscribeWithSelector } from 'zustand/middleware';
 import { immer } from 'zustand/middleware/immer';
-import { storage } from '../../../shared/infra/storage/mmkvStorage';
+import { mmkvStorage } from '../../../shared/infra/storage/mmkvStorage';
 import { QueryUser } from '../domain/entities/User';
 
 // Application Layer: ビジネスロジックと状態管理
@@ -144,19 +144,7 @@ const initialState: AuthState = {
   },
 };
 
-// カスタムストレージアダプター（MMKV用）
-const mmkvStorage = {
-  getItem: (name: string) => {
-    const value = storage.getString(name);
-    return value ? JSON.parse(value) : null;
-  },
-  setItem: (name: string, value: any) => {
-    storage.set(name, JSON.stringify(value));
-  },
-  removeItem: (name: string) => {
-    storage.delete(name);
-  },
-};
+// mmkvStorageはインポート済みなので、ここでの定義は不要
 
 // メインストア（middleware順序: devtools → persist → immer → subscribeWithSelector）
 export const useAuthStore = create<AuthState & AuthActions>()(

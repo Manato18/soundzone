@@ -1,12 +1,9 @@
-import { MMKV } from 'react-native-mmkv';
 import { create } from 'zustand';
 import { createJSONStorage, devtools, persist, subscribeWithSelector } from 'zustand/middleware';
 import { immer } from 'zustand/middleware/immer';
 import { StorageKeys } from '../../../constants/StorageKeys';
 import { Layer } from '../domain/entities/Layer';
-
-// MMKV インスタンス
-const storage = new MMKV({ id: 'layers-storage' });
+import { mmkvStorage } from '../../../shared/infra/storage/mmkvStorage';
 
 // Zustand ストアの状態定義
 interface LayersState {
@@ -65,18 +62,7 @@ type PersistedState = {
 };
 
 // MMKV ストレージアダプター
-const mmkvStorage = createJSONStorage<PersistedState>(() => ({
-  getItem: (name: string) => {
-    const value = storage.getString(name);
-    return value ? JSON.parse(value) : null;
-  },
-  setItem: (name: string, value: unknown) => {
-    storage.set(name, JSON.stringify(value));
-  },
-  removeItem: (name: string) => {
-    storage.delete(name);
-  },
-}));
+const layersStorage = createJSONStorage<PersistedState>(() => mmkvStorage);
 
 // Zustand ストア
 export const useLayersStore = create<LayersStore>()(
@@ -167,7 +153,7 @@ export const useLayersStore = create<LayersStore>()(
       ),
       {
         name: StorageKeys.LAYERS.SETTINGS,
-        storage: mmkvStorage,
+        storage: layersStorage,
         partialize: (state) => ({
           settings: state.settings,
           selectedLayerIds: state.selectedLayerIds,

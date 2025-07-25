@@ -1,5 +1,6 @@
 import { supabase } from '../../../shared/services/supabase';
 import { QueryUser } from '../domain/entities/User';
+import { sessionPersistence } from '../infra/services/sessionPersistence';
 
 // Infrastructure Layer: 外部サービス（Supabase）との連携
 export interface AuthService {
@@ -45,6 +46,11 @@ export class SupabaseAuthService implements AuthService {
         };
       }
 
+      // セッションを永続化
+      if (data.session) {
+        await sessionPersistence.persistSession(data.session);
+      }
+
       return {
         success: true,
         data: this.mapSupabaseUser(data.user),
@@ -80,6 +86,11 @@ export class SupabaseAuthService implements AuthService {
         };
       }
 
+      // セッションがある場合は永続化
+      if (data.session) {
+        await sessionPersistence.persistSession(data.session);
+      }
+
       return {
         success: true,
         data: this.mapSupabaseUser(data.user),
@@ -95,6 +106,9 @@ export class SupabaseAuthService implements AuthService {
   }
 
   async signOut(): Promise<void> {
+    // セッション情報をクリア
+    await sessionPersistence.clearPersistedSession();
+    
     const { error } = await supabase.auth.signOut();
     if (error) {
       throw new Error(this.translateError(error.message));
@@ -142,6 +156,11 @@ export class SupabaseAuthService implements AuthService {
           success: false,
           error: 'OTP検証に失敗しました',
         };
+      }
+
+      // OTP検証後のセッションを永続化
+      if (data.session) {
+        await sessionPersistence.persistSession(data.session);
       }
 
       return {

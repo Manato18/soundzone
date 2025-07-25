@@ -1,29 +1,14 @@
-import { MMKV } from 'react-native-mmkv';
 import { create } from 'zustand';
 import { devtools, persist } from 'zustand/middleware';
 import { immer } from 'zustand/middleware/immer';
 import { StorageKeys } from '../../../constants/StorageKeys';
 import { MapRegion } from '../domain/entities/MapRegion';
+import { mmkvStorage } from '../../../shared/infra/storage/mmkvStorage';
 
 /**
  * 地図関連の状態管理
  * StateManagement.mdの規約に基づいて実装
  */
-
-// MMKVインスタンス
-const storage = new MMKV();
-
-// ストレージアダプター（StorageValue型に対応）
-const mmkvStorage = {
-  getItem: (name: string) => {
-    const value = storage.getString(name);
-    return value ? JSON.parse(value) : null;
-  },
-  setItem: (name: string, value: unknown) => {
-    storage.set(name, JSON.stringify(value));
-  },
-  removeItem: (name: string) => storage.delete(name),
-};
 
 // 地図タイプの定義
 export type MapType = 'standard' | 'satellite' | 'hybrid';
