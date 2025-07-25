@@ -64,20 +64,23 @@ export const LayersDebugPanel: React.FC = () => {
 
           {/* レイヤーリスト */}
           <View style={styles.layersList}>
-            {layers.slice(0, 5).map((layer) => (
-              <TouchableOpacity
-                key={layer.id}
-                style={[
-                  styles.layerItem,
-                  layer.isSelected && styles.layerItemSelected,
-                ]}
-                onPress={() => toggleLayer(layer.id)}
-              >
-                <Text style={styles.layerText}>
-                  {layer.name} {layer.isSelected && '✓'}
-                </Text>
-              </TouchableOpacity>
-            ))}
+            {layers.slice(0, 5).map((layer) => {
+              const isSelected = selectedLayerIds.includes(layer.id);
+              return (
+                <TouchableOpacity
+                  key={layer.id}
+                  style={[
+                    styles.layerItem,
+                    isSelected && styles.layerItemSelected,
+                  ]}
+                  onPress={() => toggleLayer(layer.id)}
+                >
+                  <Text style={styles.layerText}>
+                    {layer.name} {isSelected && '✓'}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
             {layers.length > 5 && (
               <Text style={styles.moreText}>他 {layers.length - 5} 件...</Text>
             )}

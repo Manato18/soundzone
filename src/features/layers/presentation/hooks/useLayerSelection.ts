@@ -1,6 +1,6 @@
 import { useCallback, useMemo } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import { useLayersStore, layersSelectors } from '../../application/layers-store';
+import { useLayersStore } from '../../application/layers-store';
 import { Layer } from '../../domain/entities/Layer';
 
 /**
@@ -21,13 +21,10 @@ export const useLayerSelection = () => {
   const toggleAllLayersAction = useLayersStore(state => state.toggleAllLayers);
   const setSelectedLayerIds = useLayersStore(state => state.setSelectedLayerIds);
   
-  // 選択状態を含むレイヤー配列を生成
+  // レイヤー配列（選択状態は別管理）
   const layers = useMemo<Layer[]>(() => {
-    return availableLayers.map((layer: Layer) => ({
-      ...layer,
-      isSelected: selectedLayerIds.includes(layer.id),
-    }));
-  }, [availableLayers, selectedLayerIds]);
+    return availableLayers;
+  }, [availableLayers]);
   
   // レイヤーの選択/解除をトグルする（メモ化）
   const toggleLayer = useCallback((layerId: string) => {

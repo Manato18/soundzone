@@ -22,7 +22,7 @@ export default function HomeScreen() {
   const { region, updateRegion } = useMapRegion();
   const { centerOnUserLocation } = useMapWithLocation(mapRef);
   const { isFollowingUser } = useMapFollowing();
-  const { layers, toggleLayer, getSelectedLayerIds } = useLayerSelection();
+  const { layers, selectedLayerIds, toggleLayer, getSelectedLayerIds } = useLayerSelection();
   
   // 最後の有効な位置情報を保持（チカチカ防止）
   const [stableLocation, setStableLocation] = useState(location);
@@ -69,6 +69,7 @@ export default function HomeScreen() {
 
       <LayerSelector
         layers={layers}
+        selectedLayerIds={selectedLayerIds}
         onLayerToggle={toggleLayer}
       />
 

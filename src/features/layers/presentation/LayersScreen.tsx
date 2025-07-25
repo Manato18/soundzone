@@ -4,7 +4,7 @@ import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-nati
 import { useLayerSelection } from './hooks/useLayerSelection';
 
 export default function LayersScreen() {
-  const { layers, toggleLayer, toggleAllLayers } = useLayerSelection();
+  const { layers, selectedLayerIds, toggleLayer, toggleAllLayers } = useLayerSelection();
 
   return (
     <View style={styles.container}>
@@ -32,12 +32,14 @@ export default function LayersScreen() {
         </View>
 
         <View style={styles.layersSection}>
-          {layers.map((layer) => (
+          {layers.map((layer) => {
+            const isSelected = selectedLayerIds.includes(layer.id);
+            return (
             <TouchableOpacity
               key={layer.id}
               style={[
                 styles.layerCard,
-                layer.isSelected && { borderColor: layer.color, borderWidth: 2 }
+                isSelected && { borderColor: layer.color, borderWidth: 2 }
               ]}
               onPress={() => toggleLayer(layer.id)}
             >
@@ -46,13 +48,13 @@ export default function LayersScreen() {
                   <Ionicons
                     name={layer.icon as any}
                     size={24}
-                    color={layer.isSelected ? layer.color : '#666'}
+                    color={isSelected ? layer.color : '#666'}
                   />
                 </View>
                 <View style={styles.layerInfo}>
                   <Text style={[
                     styles.layerName,
-                    layer.isSelected && { color: layer.color }
+                    isSelected && { color: layer.color }
                   ]}>
                     {layer.name}
                   </Text>
@@ -63,16 +65,17 @@ export default function LayersScreen() {
                 <View style={styles.layerToggle}>
                   <View style={[
                     styles.toggle,
-                    layer.isSelected && { backgroundColor: layer.color }
+                    isSelected && { backgroundColor: layer.color }
                   ]}>
-                    {layer.isSelected && (
+                    {isSelected && (
                       <Ionicons name="checkmark" size={16} color="#fff" />
                     )}
                   </View>
                 </View>
               </View>
             </TouchableOpacity>
-          ))}
+            );
+          })}
         </View>
       </ScrollView>
     </View>

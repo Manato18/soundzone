@@ -1,5 +1,67 @@
 # SoundZone - 変更履歴
 
+## [2025-07-25] レイヤー機能の状態管理リファクタリング
+
+### 概要
+レイヤー機能において、UI状態（選択状態）とドメインモデルの分離を完全に実施し、StateManagement.mdのガイドラインに完全準拠させました。
+
+### 実施内容
+
+#### 1. ドメインモデルからUI状態の分離
+**修正ファイル:**
+- `/src/features/layers/domain/entities/Layer.ts`
+  - `isSelected`プロパティを削除し、純粋なドメインモデルに変更
+  - `DEFAULT_LAYERS`の型定義を簡潔化（`Omit<Layer, 'isSelected'>`を`Layer[]`に）
+
+#### 2. インフラストラクチャ層の修正
+**修正ファイル:**
+- `/src/features/layers/infrastructure/layers-service.ts`
+  - `fetchLayers()`からUI状態の付与を削除
+  - `updateLayer()`からUI状態の処理を削除
+  - 純粋なドメインデータのみを返すように変更
+
+#### 3. プレゼンテーション層の更新
+**修正ファイル:**
+- `/src/features/layers/presentation/components/LayerSelector.tsx`
+  - `selectedLayerIds`を別プロパティとして受け取るように変更
+  - 選択状態を`selectedLayerIds.includes(layer.id)`で判定
+
+- `/src/features/layers/presentation/LayersScreen.tsx`
+  - 選択状態を`selectedLayerIds`から判定するように変更
+  - 全ての`layer.isSelected`参照を削除
+
+- `/src/features/layers/presentation/components/LayersDebugPanel.tsx`
+  - 選択状態の判定ロジックを更新
+
+- `/src/features/layers/presentation/hooks/useLayerSelection.ts`
+  - `isSelected`を含まないLayer配列を返すように修正
+  - 未使用の`layersSelectors`インポートを削除
+
+#### 4. 他機能との統合修正
+**修正ファイル:**
+- `/src/features/home/presentation/HomeScreen.tsx`
+  - LayerSelectorに`selectedLayerIds`を渡すように修正
+
+- `/src/features/layers/presentation/hooks/use-layers-query.ts`
+  - 楽観的更新から`isSelected`プロパティを削除
+
+#### 5. ユーティリティ関数の更新
+**修正ファイル:**
+- `/src/features/layers/domain/utils/layerUtils.ts`
+  - 戻り値の型定義を`Omit<Layer, 'isSelected'>`から`Layer`に変更
+
+### 技術的な改善点
+- **関心の分離**: UI状態とドメインモデルの完全な分離
+- **型安全性**: TypeScriptエラーの完全な解消
+- **保守性**: StateManagement.mdに準拠した一貫性のある実装
+- **パフォーマンス**: 不要なプロパティの削除によるメモリ使用量の削減
+
+### 結果
+- TypeScriptコンパイルエラー: 0
+- レイヤー機能のLint警告: 0
+- UI状態管理の一元化完了
+- ドメインモデルの純粋性確保
+
 ## [2025-07-25] 一元管理アーキテクチャガイドの作成
 
 ### 概要

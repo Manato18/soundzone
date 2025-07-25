@@ -122,7 +122,6 @@ export const useCreateLayerMutation = () => {
       const optimisticLayer: Layer = {
         ...newLayer,
         id: `temp-${Date.now()}`,
-        isSelected: true,
       };
       
       // 現在のデータを取得
