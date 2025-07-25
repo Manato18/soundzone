@@ -162,11 +162,17 @@ export default function AudioPlayerModal({ visible, onClose, audioData }: AudioP
         
         // panResponder内での状態更新を安全に実行
         const performTransition = (targetState: keyof typeof MODAL_STATES) => {
-          setTimeout(() => {
+          setTimeout(async () => {
             if (isMountedRef.current) {
               if (targetState === 'CLOSED') {
-                // CLOSEDの場合はcloseModal関数を使用して音声も停止
-                closeModal();
+                // CLOSEDの場合は音声を停止してから閉じる
+                try {
+                  await stop();
+                  animateToState('CLOSED');
+                } catch (error) {
+                  console.error('Error closing modal:', error);
+                  animateToState('CLOSED');
+                }
               } else {
                 animateToState(targetState);
               }
@@ -202,7 +208,7 @@ export default function AudioPlayerModal({ visible, onClose, audioData }: AudioP
         }
       },
     }),
-    [slideAnim, animateToState, closeModal]
+    [slideAnim, animateToState, stop]
   );
 
   // モーダルオープンアニメーション（下半分から開始）
