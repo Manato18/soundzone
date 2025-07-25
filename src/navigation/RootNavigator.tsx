@@ -3,9 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import React, { useEffect } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { useAuth } from '../features/auth/presentation/hooks/use-auth';
-import { queryKeys } from '../shared/presenter/queries/queryClient';
-import { supabase } from '../shared/services/supabase';
-import { sessionPersistence } from '../features/auth/infra/services/sessionPersistence';
+import { authStateManager } from '../features/auth/infra/services/authStateManager';
 import AppNavigator from './AppNavigator';
 import AuthNavigator from './AuthNavigator';
 
@@ -13,43 +11,23 @@ export default function RootNavigator() {
   const { isAuthenticated, isLoading, user } = useAuth();
   const queryClient = useQueryClient();
 
-  // Supabaseの認証状態変更を監視
+  // authStateManagerの初期化（アプリ起動時に一度だけ）
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        console.log('Auth state changed:', event, session?.user?.email);
-        
-        if (event === 'SIGNED_OUT') {
-          // サインアウト時はキャッシュをクリア
-          console.log('Clearing auth cache due to sign out');
-          queryClient.setQueryData(queryKeys.auth.user(), null);
-          queryClient.setQueryData(queryKeys.auth.session(), null);
-          queryClient.removeQueries({ queryKey: queryKeys.auth.all });
-          
-          // 認証クエリを無効化して再取得
-          await queryClient.invalidateQueries({ queryKey: queryKeys.auth.all });
-        } else if (event === 'SIGNED_IN') {
-          // サインイン時も認証クエリを無効化して最新情報を取得
-          console.log('User signed in, invalidating auth queries');
-          await queryClient.invalidateQueries({ queryKey: queryKeys.auth.all });
-          
-          // セッションを永続化
-          if (session) {
-            await sessionPersistence.persistSession(session);
-          }
-        } else if (event === 'TOKEN_REFRESHED') {
-          // トークン更新時も最新情報を取得
-          await queryClient.invalidateQueries({ queryKey: queryKeys.auth.all });
-          
-          // 更新されたセッションを永続化
-          if (session) {
-            await sessionPersistence.persistSession(session);
-          }
-        }
+    const initializeAuth = async () => {
+      try {
+        await authStateManager.initialize(queryClient);
+        console.log('Auth state manager initialized');
+      } catch (error) {
+        console.error('Failed to initialize auth state manager:', error);
       }
-    );
+    };
 
-    return () => subscription.unsubscribe();
+    initializeAuth();
+
+    // クリーンアップ
+    return () => {
+      authStateManager.cleanup();
+    };
   }, [queryClient]);
 
   // ローディング中の表示

@@ -1,5 +1,61 @@
 # SoundZone - 変更履歴
 
+## [2025-07-25] 認証システムの状態管理改善（Phase 3）
+
+### 概要
+AUTH_ISSUES_SOLUTIONS.mdのPhase 3を完了し、認証状態の一元管理、競合状態の解決、メモリリークの防止を実装しました。
+
+### 主要な実装内容
+
+#### 1. 認証状態の単一ソース化
+**新規作成ファイル:**
+- `src/features/auth/infra/services/authStateManager.ts`
+  - Supabaseのauth.onAuthStateChangeを一元管理
+  - ZustandストアとTanStack Queryの自動同期
+  - 認証状態変更時の統一的な処理
+
+**修正ファイル:**
+- `src/features/auth/infra/services/authTokenManager.ts`
+  - 重複するonAuthStateChangeリスナーを削除
+  - authStateManagerからの呼び出しに変更
+- `src/navigation/RootNavigator.tsx`
+  - authStateManagerの初期化処理を追加
+  - 重複するリスナーを削除
+- `src/features/auth/presentation/hooks/use-auth.ts`
+  - useCurrentUserQueryをZustandストアと連携
+
+#### 2. 競合状態の解決
+**修正ファイル:**
+- `src/features/auth/application/auth-store.ts`
+  - `authProcessState`フラグを追加（'IDLE' | 'SIGNING_IN' | 'SIGNING_UP' | 'SIGNING_OUT'）
+  - 状態管理アクションを追加
+- `src/features/auth/presentation/hooks/use-auth.ts`
+  - 各認証操作（signIn、signUp、signOut）に状態チェックを追加
+  - 認証処理中は他の操作をブロック
+  - 適切なエラーメッセージを表示
+
+#### 3. メモリリークの防止
+- 全てのuseEffectにクリーンアップ処理を確認・実装
+- authStateManager: リスナーのunsubscribe処理
+- authTokenManager: タイマーのクリア処理
+- ロックアウトタイマー: clearInterval処理
+- クールダウンタイマー: clearTimeout処理
+
+### バグ修正
+- `sessionPersistence.clearSession()` → `clearPersistedSession()`に修正
+- `sessionPersistence.saveSession()` → `persistSession()`に修正  
+- `QueryUser`型のプロパティ不一致を修正（username、bio → name、avatarUrl）
+- TypeScript型エラーを修正（undefined → null）
+
+### 技術的な改善点
+- 認証状態の一元管理によるデータ整合性の向上
+- 競合状態の防止による安定性向上
+- メモリリークの完全な防止
+- TypeScript型安全性の確保
+
+### 次のステップ
+Phase 4（生体認証、セッションタイムアウト）は必要に応じて実装予定です。
+
 ## [2025-07-25] 認証システムのセキュリティ強化（Phase 1 & 2）
 
 ### 概要

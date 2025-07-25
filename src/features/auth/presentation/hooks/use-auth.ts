@@ -2,6 +2,7 @@ import { useMutation, UseMutationOptions, useQuery, useQueryClient } from '@tans
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { queryKeys } from '../../../../shared/presenter/queries/queryClient';
 import {
+  useAuthProcessState,
   useAuthSettings,
   useAuthUser,
   useClearEmailVerificationForm,
@@ -13,6 +14,7 @@ import {
   useIsAuthenticated,
   useLoginForm,
   useReset,
+  useSetAuthProcessState,
   useSetLastLoginEmail,
   useSetLoginError,
   useSetLoginSubmitting,
@@ -37,27 +39,23 @@ import { rateLimiter } from '../../infra/services/rateLimiter';
 
 // === クエリ ===
 export const useCurrentUserQuery = () => {
-  const setUser = useSetUser();
+  const user = useAuthUser();
   
   const query = useQuery({
     queryKey: queryKeys.auth.user(),
     queryFn: async () => {
-      const user = await authService.getCurrentUser();
-      setUser(user);
-      return user;
+      // authStateManagerが管理するため、ここでは現在のユーザー情報を返すだけ
+      const currentUser = await authService.getCurrentUser();
+      return currentUser;
     },
-    staleTime: 5 * 60 * 1000, // 5分キャッシュ
-    refetchOnMount: true,
+    // authStateManagerが状態を管理するため、キャッシュを長めに設定
+    staleTime: 30 * 60 * 1000, // 30分
+    gcTime: 60 * 60 * 1000, // 1時間
+    refetchOnMount: false,
     refetchOnWindowFocus: false,
+    // 初期データとしてZustandストアの値を使用
+    initialData: user,
   });
-
-  // エラーハンドリングはuseEffectで処理
-  useEffect(() => {
-    if (query.error) {
-      console.error('Failed to fetch current user:', query.error);
-      setUser(null);
-    }
-  }, [query.error, setUser]);
 
   return query;
 };
@@ -211,6 +209,8 @@ export const useAuth = () => {
   const user = useAuthUser();
   const isAuthenticated = useIsAuthenticated();
   const settings = useAuthSettings();
+  const authProcessState = useAuthProcessState();
+  const setAuthProcessState = useSetAuthProcessState();
   const { isLoading } = useCurrentUserQuery();
   const reset = useReset();
   const queryClient = useQueryClient();
@@ -245,6 +245,14 @@ export const useAuth = () => {
   }, [signUpMutation]);
 
   const signOut = useCallback(async () => {
+    // 認証プロセスの状態チェック
+    if (authProcessState !== 'IDLE') {
+      console.warn(`Signout attempt blocked: current state is ${authProcessState}`);
+      return;
+    }
+
+    setAuthProcessState('SIGNING_OUT');
+
     try {
       await signOutMutation.mutateAsync();
     } catch (error) {
@@ -257,8 +265,10 @@ export const useAuth = () => {
       queryClient.invalidateQueries({ 
         predicate: (query) => query.queryKey[0] !== 'auth' 
       });
+    } finally {
+      setAuthProcessState('IDLE');
     }
-  }, [signOutMutation, reset, queryClient]);
+  }, [authProcessState, setAuthProcessState, signOutMutation, reset, queryClient]);
 
   return {
     // 状態
@@ -292,6 +302,8 @@ export const useLoginFormHook = () => {
   const setLoginError = useSetLoginError();
   const clearLoginForm = useClearLoginForm();
   const setLoginSubmitting = useSetLoginSubmitting();
+  const authProcessState = useAuthProcessState();
+  const setAuthProcessState = useSetAuthProcessState();
   const signInMutation = useSignInMutation();
   
   // レート制限の状態
@@ -327,6 +339,13 @@ export const useLoginFormHook = () => {
   }, [lockoutTime, form.email]);
 
   const handleSubmit = useCallback(async () => {
+    // 認証プロセスの状態チェック
+    if (authProcessState !== 'IDLE') {
+      console.warn(`Login attempt blocked: current state is ${authProcessState}`);
+      setLoginError('general', '認証処理中です。しばらくお待ちください。');
+      return { success: false };
+    }
+
     // バリデーション
     if (!form.email.trim()) {
       setLoginError('email', 'メールアドレスを入力してください');
@@ -361,6 +380,7 @@ export const useLoginFormHook = () => {
     
     setRemainingAttempts(rateLimit.remainingAttempts || null);
     setLoginSubmitting(true);
+    setAuthProcessState('SIGNING_IN');
     
     try {
       const result = await signInMutation.mutateAsync({ 
@@ -390,8 +410,9 @@ export const useLoginFormHook = () => {
       return { success: false };
     } finally {
       setLoginSubmitting(false);
+      setAuthProcessState('IDLE');
     }
-  }, [form.email, form.password, signInMutation, setLoginError, setLoginSubmitting, clearLoginForm]);
+  }, [form.email, form.password, authProcessState, signInMutation, setLoginError, setLoginSubmitting, setAuthProcessState, clearLoginForm]);
 
   return {
     form,
@@ -419,11 +440,20 @@ export const useSignUpFormHook = () => {
   const setSignUpError = useSetSignUpError();
   const clearSignUpForm = useClearSignUpForm();
   const setSignUpSubmitting = useSetSignUpSubmitting();
+  const authProcessState = useAuthProcessState();
+  const setAuthProcessState = useSetAuthProcessState();
   const showEmailVerificationModal = useShowEmailVerificationModal();
   const startResendCooldown = useStartResendCooldown();
   const signUpMutation = useSignUpMutation();
 
   const handleSubmit = useCallback(async () => {
+    // 認証プロセスの状態チェック
+    if (authProcessState !== 'IDLE') {
+      console.warn(`Signup attempt blocked: current state is ${authProcessState}`);
+      setSignUpError('general', '認証処理中です。しばらくお待ちください。');
+      return { success: false };
+    }
+
     // バリデーション
     if (!form.email.trim()) {
       setSignUpError('email', 'メールアドレスを入力してください');
@@ -462,6 +492,7 @@ export const useSignUpFormHook = () => {
     }
 
     setSignUpSubmitting(true);
+    setAuthProcessState('SIGNING_UP');
     
     try {
       const result = await signUpMutation.mutateAsync({ 
@@ -493,8 +524,9 @@ export const useSignUpFormHook = () => {
       return { success: false };
     } finally {
       setSignUpSubmitting(false);
+      setAuthProcessState('IDLE');
     }
-  }, [form.email, form.password, form.confirmPassword, signUpMutation, setSignUpError, setSignUpSubmitting, clearSignUpForm, showEmailVerificationModal, startResendCooldown]);
+  }, [form.email, form.password, form.confirmPassword, authProcessState, signUpMutation, setSignUpError, setSignUpSubmitting, setAuthProcessState, clearSignUpForm, showEmailVerificationModal, startResendCooldown]);
 
   return {
     form,

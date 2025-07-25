@@ -66,7 +66,7 @@ export class SessionPersistence {
       // メタデータを取得
       const sessionData = MMKVStorage.getObject<PersistedSessionData>(
         StorageKeys.AUTH_SESSION
-      );
+      ) || null;
 
       // セッションタイムアウトチェック
       if (sessionData && this.isSessionExpired(sessionData)) {

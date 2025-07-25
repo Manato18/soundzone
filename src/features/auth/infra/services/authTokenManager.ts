@@ -17,6 +17,8 @@ export class AuthTokenManager {
 
   /**
    * トークン自動更新の初期化
+   * 注: 認証状態の監視はauthStateManagerで一元管理されるため、
+   * このメソッドは初回のセッションチェックのみ行う
    */
   async initialize(): Promise<void> {
     // 現在のセッションを取得
@@ -25,23 +27,25 @@ export class AuthTokenManager {
     if (session) {
       this.scheduleTokenRefresh(session);
     }
+  }
 
-    // 認証状態変更の監視
-    supabase.auth.onAuthStateChange((event, session) => {
-      console.log('[AuthTokenManager] Auth state changed:', event);
-      
-      switch (event) {
-        case 'SIGNED_IN':
-        case 'TOKEN_REFRESHED':
-          if (session) {
-            this.scheduleTokenRefresh(session);
-          }
-          break;
-        case 'SIGNED_OUT':
-          this.clearRefreshTimer();
-          break;
-      }
-    });
+  /**
+   * 認証状態変更時の処理（authStateManagerから呼び出される）
+   */
+  handleAuthStateChange(event: string, session: Session | null): void {
+    console.log('[AuthTokenManager] Auth state changed:', event);
+    
+    switch (event) {
+      case 'SIGNED_IN':
+      case 'TOKEN_REFRESHED':
+        if (session) {
+          this.scheduleTokenRefresh(session);
+        }
+        break;
+      case 'SIGNED_OUT':
+        this.clearRefreshTimer();
+        break;
+    }
   }
 
   /**
@@ -109,7 +113,7 @@ export class AuthTokenManager {
   /**
    * クリーンアップ
    */
-  destroy(): void {
+  cleanup(): void {
     this.clearRefreshTimer();
   }
 }

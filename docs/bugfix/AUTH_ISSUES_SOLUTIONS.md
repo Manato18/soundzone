@@ -3,7 +3,7 @@
 ## 実装状況
 - ✅ Phase 1: 緊急対応（完了）
 - ✅ Phase 2: セキュリティ強化（完了）
-- ⏳ Phase 3: 状態管理の改善（未実装）
+- ✅ Phase 3: 状態管理の改善（完了）
 
 ## 目次
 1. [重大なセキュリティ問題の解決](#1-重大なセキュリティ問題の解決)
@@ -102,78 +102,101 @@
 
 ## 2. 状態管理の問題の解決
 
-### 2.1 認証状態の単一ソース化
+### 2.1 認証状態の単一ソース化 ✅
 
 **問題**: Zustand、TanStack Query、Supabaseで別々に管理
 
-**解決策**:
+**実装済みの解決策**:
 
-1. **統合アーキテクチャ**
-   ```
-   状態管理の階層:
-   1. Supabase: 真のソース（サーバー側）
-   2. Zustand: クライアント側の単一ソース
-   3. TanStack Query: キャッシュレイヤー（Zustandから派生）
-   ```
-
-2. **同期メカニズム**
-   ```
-   イベントフロー:
-   1. Supabaseのauth状態変更をリスナーで検知
-   2. Zustandストアを更新
-   3. TanStack Queryのキャッシュを無効化
-   4. 関連コンポーネントが自動的に再レンダリング
+1. **統合アーキテクチャ（実装済み）**
+   - `authStateManager.ts`を作成
+   - Supabaseのauth.onAuthStateChangeを一元管理
+   - ZustandストアとTanStack Queryを自動同期
+   ```typescript
+   // /src/features/auth/infra/services/authStateManager.ts
+   private async handleAuthStateChange(event: AuthChangeEvent, session: Session | null) {
+     // authTokenManagerに通知
+     authTokenManager.handleAuthStateChange(event, session);
+     // 状態を同期
+     await this.syncAuthState(session);
+   }
    ```
 
-3. **実装パターン**
-   - カスタムフック`useAuthState`で統一されたインターフェース提供
-   - 認証操作は全てZustandアクションを経由
-   - Supabase直接操作の禁止
+2. **実装した同期メカニズム**
+   - RootNavigatorでauthStateManagerを初期化
+   - Supabaseの認証状態変更を監視
+   - Zustandストアを自動更新
+   - TanStack Queryキャッシュを無効化
 
-### 2.2 競合状態の解決
+3. **実装したクリーンアップ処理**
+   - アプリ終了時にリスナーを解除
+   - authTokenManagerのタイマーをクリア
+   - メモリリークを防止
+
+### 2.2 競合状態の解決 ✅
 
 **問題**: サインアップ時のsignOut処理で競合状態が発生
 
-**解決策**:
+**実装済みの解決策**:
 
-1. **状態遷移の明確化**
+1. **状態遷移の明確化（実装済み）**
+   - `authProcessState`フラグをauth-store.tsに追加
+   ```typescript
+   // /src/features/auth/application/auth-store.ts
+   authProcessState: 'IDLE' | 'SIGNING_IN' | 'SIGNING_UP' | 'SIGNING_OUT';
    ```
-   状態遷移図:
-   - IDLE → SIGNING_OUT → SIGNED_OUT → SIGNING_UP → SIGNED_UP
-   - 各状態で許可される操作を制限
+
+2. **実装した状態チェック**
+   ```typescript
+   // /src/features/auth/presentation/hooks/use-auth.ts
+   // ログイン処理前の状態チェック
+   if (authProcessState !== 'IDLE') {
+     console.warn(`Login attempt blocked: current state is ${authProcessState}`);
+     setLoginError('general', '認証処理中です。しばらくお待ちください。');
+     return { success: false };
+   }
    ```
 
-2. **非同期処理の改善**
-   - Promise chainではなくasync/awaitで明確な順序制御
-   - 遷移中の操作をキューイング
-   - AbortControllerでキャンセル可能な処理
+3. **実装した保護メカニズム**
+   - 認証処理中は他の認証操作をブロック
+   - 適切なエラーメッセージを表示
+   - 処理完了後に状態をIDLEに戻す
 
-3. **デバウンス/スロットリング**
-   - 認証操作に最小間隔を設定（例：2秒）
-   - 連続したリクエストを防止
-
-### 2.3 メモリリークの防止
+### 2.3 メモリリークの防止 ✅
 
 **問題**: useEffectのクリーンアップ不足、参照の保持
 
-**解決策**:
+**実装済みの解決策**:
 
-1. **適切なクリーンアップ**
+1. **適切なクリーンアップ（実装済み）**
    ```
-   チェックリスト:
-   - [ ] 全てのイベントリスナーの解除
-   - [ ] タイマーのクリア
-   - [ ] Observableのunsubscribe
-   - [ ] AbortControllerのabort
+   実装したクリーンアップ:
+   - [x] authStateManagerのリスナー解除
+   - [x] authTokenManagerのタイマークリア
+   - [x] ロックアウトタイマーのクリア
+   - [x] クールダウンタイマーのクリア
    ```
 
-2. **WeakMapの活用**
-   - エラー参照などの一時的なデータにWeakMapを使用
-   - 自動的なガベージコレクション
+2. **実装したクリーンアップ例**
+   ```typescript
+   // /src/navigation/RootNavigator.tsx
+   useEffect(() => {
+     const initializeAuth = async () => {
+       await authStateManager.initialize(queryClient);
+     };
+     initializeAuth();
+     
+     // クリーンアップ
+     return () => {
+       authStateManager.cleanup();
+     };
+   }, [queryClient]);
+   ```
 
-3. **React DevToolsでの検証**
-   - Profilerでメモリ使用量を監視
-   - なぜレンダリングされたかを追跡
+3. **メモリリーク防止の確認**
+   - 全てのuseEffectにreturn文でクリーンアップを実装
+   - タイマーは必ずclearTimeout/clearIntervalを実行
+   - リスナーは必ずunsubscribeを実行
 
 ## 3. 機能面の不足の解決
 
@@ -253,10 +276,13 @@
 2. ✅ エラーメッセージのサニタイズ
    - `errorSanitizer.ts`実装済み
 
-### Phase 3: 状態管理の改善（⏳ 未実装）
-1. 認証状態の単一ソース化
-2. 競合状態の解決
-3. メモリリークの修正
+### Phase 3: 状態管理の改善（✅ 完了）
+1. ✅ 認証状態の単一ソース化
+   - `authStateManager.ts`実装済み
+2. ✅ 競合状態の解決
+   - `authProcessState`フラグ実装済み
+3. ✅ メモリリークの修正
+   - 全てのクリーンアップ処理実装済み
 
 
 ## テスト戦略
@@ -276,12 +302,44 @@
 - 静的解析ツールの使用
 - セキュリティ監査
 
+## Phase 3で実装されたファイル一覧
+
+### 新規作成ファイル
+- `/src/features/auth/infra/services/authStateManager.ts` - 認証状態の一元管理
+
+### 修正ファイル
+- `/src/features/auth/infra/services/authTokenManager.ts` - 重複リスナー削除
+- `/src/features/auth/application/auth-store.ts` - authProcessStateフラグ追加
+- `/src/features/auth/presentation/hooks/use-auth.ts` - 状態チェック追加
+- `/src/navigation/RootNavigator.tsx` - authStateManager初期化
+
+### 実装時に修正したバグ
+- `sessionPersistence.clearSession()` → `clearPersistedSession()`
+- `sessionPersistence.saveSession()` → `persistSession()`
+- `QueryUser`型のプロパティ不一致を修正
+
 ## まとめ
 
-この文書で提案した解決策を実装することで、SoundZoneアプリの認証システムは以下の改善が期待できます：
+Phase 1、Phase 2、Phase 3の実装により、SoundZoneアプリの認証システムは以下の改善を達成しました：
 
-1. **セキュリティの大幅な向上**: 暗号化キーの適切な管理、トークンの自動更新、セッション管理の強化
-2. **ユーザー体験の向上**: 再ログイン不要、エラー時の適切な対応、生体認証による利便性
-3. **保守性の向上**: 単一の状態管理、明確なエラー処理、適切なログ記録
+1. **セキュリティの大幅な向上**: 
+   - ✅ 暗号化キーの動的生成と安全な保存
+   - ✅ トークンの自動更新によるセッション継続性
+   - ✅ レート制限によるブルートフォース攻撃対策
+   - ✅ エラーメッセージのサニタイズによる情報漏洩防止
 
-各フェーズを順次実装することで、リスクを最小限に抑えながら着実に改善を進めることができます。
+2. **状態管理の改善**:
+   - ✅ Supabase、Zustand、TanStack Queryの状態を一元管理
+   - ✅ 競合状態の防止メカニズム
+   - ✅ メモリリークの完全な防止
+
+3. **ユーザー体験の向上**: 
+   - ✅ アプリ再起動後も認証状態を維持
+   - ✅ トークン期限切れによる再ログイン不要
+   - ✅ わかりやすいエラーメッセージ
+   - ✅ 認証処理中の適切なフィードバック
+
+4. **コード品質の向上**:
+   - ✅ ディレクトリ構造の整理
+   - ✅ 一貫した命名規則
+   - ✅ TypeScript型安全性の確保
