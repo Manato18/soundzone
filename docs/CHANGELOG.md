@@ -47,7 +47,7 @@ AUDIOPIN_ISSUES_AND_SOLUTIONS.mdのPhase 2を完了し、レイヤー切替時�
 - リアルタイム更新の実装が簡単
 
 ### 次のステップ
-Phase 3では、リソース管理システムの実装に取り組む予定です。
+Phase 3については実装状況を精査した結果、既に主要な問題が解決されているため追加実装は不要と判断しました。詳細はAUDIOPIN_ISSUES_AND_SOLUTIONS.mdを参照してください。
 
 ## [2025-07-25] AudioPin音声再生機能の改善（Phase 1）
 
