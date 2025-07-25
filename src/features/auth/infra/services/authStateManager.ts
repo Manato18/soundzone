@@ -88,6 +88,7 @@ export class AuthStateManager {
       
       case 'INITIAL_SESSION':
         // 初期セッションは initialize で処理済み
+        // 注意: ここでclearAuthStateを呼ばない（セッション復元を妨げるため）
         break;
       
       default:
@@ -127,7 +128,9 @@ export class AuthStateManager {
       // セッションを永続化
       await sessionPersistence.persistSession(session);
     } else {
-      await this.clearAuthState();
+      // セッションがない場合でも、明示的なサインアウト以外ではクリアしない
+      // （セッション復元中や初期化中の可能性があるため）
+      console.log('[AuthStateManager] No session in syncAuthState - skipping clear');
     }
   }
 

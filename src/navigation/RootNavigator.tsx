@@ -1,34 +1,14 @@
 import { NavigationContainer } from '@react-navigation/native';
-import { useQueryClient } from '@tanstack/react-query';
-import React, { useEffect } from 'react';
+import React from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { useAuth } from '../features/auth/presentation/hooks/use-auth';
-import { authStateManager } from '../features/auth/infra/services/authStateManager';
 import AppNavigator from './AppNavigator';
 import AuthNavigator from './AuthNavigator';
 
 export default function RootNavigator() {
   const { isAuthenticated, isLoading, user } = useAuth();
-  const queryClient = useQueryClient();
 
-  // authStateManagerの初期化（アプリ起動時に一度だけ）
-  useEffect(() => {
-    const initializeAuth = async () => {
-      try {
-        await authStateManager.initialize(queryClient);
-        console.log('Auth state manager initialized');
-      } catch (error) {
-        console.error('Failed to initialize auth state manager:', error);
-      }
-    };
-
-    initializeAuth();
-
-    // クリーンアップ
-    return () => {
-      authStateManager.cleanup();
-    };
-  }, [queryClient]);
+  // authStateManagerの初期化はAuthProviderで一元管理されるため、ここでは行わない
 
   // ローディング中の表示
   if (isLoading) {

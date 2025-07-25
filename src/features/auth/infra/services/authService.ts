@@ -122,6 +122,8 @@ export class SupabaseAuthService implements AuthService {
   }
 
   async getCurrentUser(): Promise<QueryUser | null> {
+    // このメソッドはReact Queryのキャッシュ用に使用される
+    // 実際の認証状態の管理はauthStateManagerが行う
     try {
       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
       

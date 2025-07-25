@@ -8,6 +8,7 @@ import 'react-native-gesture-handler';
 import { queryClient } from './src/shared/presenter/queries/queryClient';
 import RootNavigator from './src/navigation/RootNavigator';
 import { AppInitializer } from './src/shared/infra/initialization/appInitializer';
+import { AuthProvider } from './src/features/auth/presentation/providers';
 import { LayersProvider } from './src/features/layers/presentation/providers/LayersProvider';
 
 export default function App() {
@@ -37,10 +38,12 @@ export default function App() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <LayersProvider>
-        <RootNavigator />
-        <StatusBar style="auto" />
-      </LayersProvider>
+      <AuthProvider>
+        <LayersProvider>
+          <RootNavigator />
+          <StatusBar style="auto" />
+        </LayersProvider>
+      </AuthProvider>
     </QueryClientProvider>
   );
 } 
