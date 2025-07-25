@@ -1,6 +1,7 @@
-import { supabase } from '../../../shared/services/supabase';
-import { QueryUser } from '../domain/entities/User';
-import { sessionPersistence } from '../infra/services/sessionPersistence';
+import { supabase } from '../../../../shared/services/supabase';
+import { QueryUser } from '../../domain/entities/User';
+import { sessionPersistence } from './sessionPersistence';
+import { errorSanitizer } from './errorSanitizer';
 
 // Infrastructure Layer: 外部サービス（Supabase）との連携
 export interface AuthService {
@@ -33,9 +34,10 @@ export class SupabaseAuthService implements AuthService {
       });
 
       if (error) {
+        const sanitized = errorSanitizer.sanitize(error);
         return {
           success: false,
-          error: this.translateError(error.message),
+          error: sanitized.message,
         };
       }
 
@@ -56,9 +58,10 @@ export class SupabaseAuthService implements AuthService {
         data: this.mapSupabaseUser(data.user),
       };
     } catch (error) {
+      const sanitized = errorSanitizer.sanitize(error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : '予期しないエラーが発生しました',
+        error: sanitized.message,
       };
     }
   }
@@ -71,9 +74,10 @@ export class SupabaseAuthService implements AuthService {
       });
 
       if (error) {
+        const sanitized = errorSanitizer.sanitize(error);
         return {
           success: false,
-          error: this.translateError(error.message),
+          error: sanitized.message,
           needsEmailVerification: false,
         };
       }
@@ -97,9 +101,10 @@ export class SupabaseAuthService implements AuthService {
         needsEmailVerification: !data.session, // セッションがない場合はメール認証が必要
       };
     } catch (error) {
+      const sanitized = errorSanitizer.sanitize(error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : '予期しないエラーが発生しました',
+        error: sanitized.message,
         needsEmailVerification: false,
       };
     }
@@ -111,7 +116,8 @@ export class SupabaseAuthService implements AuthService {
     
     const { error } = await supabase.auth.signOut();
     if (error) {
-      throw new Error(this.translateError(error.message));
+      const sanitized = errorSanitizer.sanitize(error);
+      throw new Error(sanitized.message);
     }
   }
 
@@ -145,9 +151,10 @@ export class SupabaseAuthService implements AuthService {
       });
 
       if (error) {
+        const sanitized = errorSanitizer.sanitize(error);
         return {
           success: false,
-          error: this.translateError(error.message),
+          error: sanitized.message,
         };
       }
 
@@ -168,9 +175,10 @@ export class SupabaseAuthService implements AuthService {
         data: this.mapSupabaseUser(data.user),
       };
     } catch (error) {
+      const sanitized = errorSanitizer.sanitize(error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'OTP検証中にエラーが発生しました',
+        error: sanitized.message,
       };
     }
   }
@@ -182,7 +190,8 @@ export class SupabaseAuthService implements AuthService {
     });
 
     if (error) {
-      throw new Error(this.translateError(error.message));
+      const sanitized = errorSanitizer.sanitize(error);
+      throw new Error(sanitized.message);
     }
   }
 
@@ -190,7 +199,8 @@ export class SupabaseAuthService implements AuthService {
     const { error } = await supabase.auth.resetPasswordForEmail(email);
     
     if (error) {
-      throw new Error(this.translateError(error.message));
+      const sanitized = errorSanitizer.sanitize(error);
+      throw new Error(sanitized.message);
     }
   }
 
@@ -204,19 +214,7 @@ export class SupabaseAuthService implements AuthService {
     };
   }
 
-  private translateError(error: string): string {
-    // エラーメッセージの日本語化
-    const errorMap: Record<string, string> = {
-      'Invalid email or password': 'メールアドレスまたはパスワードが正しくありません',
-      'Email not confirmed': 'メールアドレスが認証されていません',
-      'User already registered': 'このメールアドレスは既に登録されています',
-      'Password should be at least 6 characters': 'パスワードは6文字以上で入力してください',
-      'Invalid OTP': '認証コードが正しくありません',
-      'Token has expired': '認証コードの有効期限が切れています',
-    };
-
-    return errorMap[error] || error;
-  }
+  // translateErrorメソッドは削除（errorSanitizerが代替）
 }
 
 // シングルトンインスタンス

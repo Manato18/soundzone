@@ -157,4 +157,36 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     marginTop: -8,
   },
+  warningText: {
+    color: '#ff8800',
+    fontSize: 13,
+    marginTop: 8,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  lockoutContainer: {
+    backgroundColor: '#fff3cd',
+    borderColor: '#ffeaa7',
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 12,
+    marginTop: 8,
+    marginBottom: 8,
+  },
+  lockoutText: {
+    color: '#856404',
+    fontSize: 14,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  lockoutTimer: {
+    color: '#856404',
+    fontSize: 16,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    marginTop: 4,
+  },
+  buttonDisabled: {
+    opacity: 0.6,
+  },
 }); 

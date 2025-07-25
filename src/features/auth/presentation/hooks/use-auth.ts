@@ -1,5 +1,5 @@
 import { useMutation, UseMutationOptions, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { queryKeys } from '../../../../shared/presenter/queries/queryClient';
 import {
   useAuthSettings,
@@ -30,7 +30,8 @@ import {
   useUpdateSignUpForm,
 } from '../../application/auth-store';
 import { QueryUser } from '../../domain/entities/User';
-import { AuthResult, authService, SignUpResult } from '../../infrastructure/auth-service';
+import { AuthResult, authService, SignUpResult } from '../../infra/services/authService';
+import { rateLimiter } from '../../infra/services/rateLimiter';
 
 // Presentation Layer: UI向けのHookと TanStack Query
 
@@ -292,6 +293,11 @@ export const useLoginFormHook = () => {
   const clearLoginForm = useClearLoginForm();
   const setLoginSubmitting = useSetLoginSubmitting();
   const signInMutation = useSignInMutation();
+  
+  // レート制限の状態
+  const [remainingAttempts, setRemainingAttempts] = useState<number | null>(null);
+  const [lockoutTime, setLockoutTime] = useState<Date | null>(null);
+  const [waitTime, setWaitTime] = useState<number>(0);
 
   // 初回マウント時に最後のログインメールを設定
   const hasSetInitialEmail = useRef(false);
@@ -301,6 +307,24 @@ export const useLoginFormHook = () => {
       hasSetInitialEmail.current = true;
     }
   }, [settings.lastLoginEmail, updateLoginForm]);
+
+  // ロックアウトのカウントダウンタイマー
+  useEffect(() => {
+    if (!lockoutTime) return;
+    
+    const timer = setInterval(() => {
+      const remaining = rateLimiter.getTimeUntilUnlock(form.email);
+      if (remaining <= 0) {
+        setLockoutTime(null);
+        setWaitTime(0);
+        clearInterval(timer);
+      } else {
+        setWaitTime(Math.ceil(remaining / 1000)); // 秒単位で更新
+      }
+    }, 1000);
+    
+    return () => clearInterval(timer);
+  }, [lockoutTime, form.email]);
 
   const handleSubmit = useCallback(async () => {
     // バリデーション
@@ -321,6 +345,21 @@ export const useLoginFormHook = () => {
       return { success: false };
     }
 
+    // レート制限チェック
+    const rateLimit = await rateLimiter.checkAndRecordAttempt(form.email);
+    
+    if (!rateLimit.allowed) {
+      if (rateLimit.lockedUntil) {
+        setLockoutTime(rateLimit.lockedUntil);
+        setWaitTime(Math.ceil((rateLimit.waitTimeMs || 0) / 1000));
+        setLoginError('general', `ログイン試行回数が上限に達しました。${Math.ceil((rateLimit.waitTimeMs || 0) / 60000)}分後に再度お試しください。`);
+      } else if (rateLimit.waitTimeMs) {
+        setLoginError('general', `${Math.ceil(rateLimit.waitTimeMs / 1000)}秒後に再度お試しください。`);
+      }
+      return { success: false };
+    }
+    
+    setRemainingAttempts(rateLimit.remainingAttempts || null);
     setLoginSubmitting(true);
     
     try {
@@ -331,9 +370,18 @@ export const useLoginFormHook = () => {
       
       if (!result.success) {
         setLoginError('general', result.error || 'ログインに失敗しました');
+        
+        // 失敗時に残り試行回数を更新
+        const updatedLimit = await rateLimiter.checkAndRecordAttempt(form.email);
+        if (updatedLimit.remainingAttempts !== undefined) {
+          setRemainingAttempts(updatedLimit.remainingAttempts);
+        }
+        
         return { success: false };
       }
       
+      // 成功時はレート制限をクリア
+      rateLimiter.clearAttempts(form.email);
       clearLoginForm();
       return { success: true };
     } catch (error) {
@@ -347,11 +395,20 @@ export const useLoginFormHook = () => {
 
   return {
     form,
-    updateEmail: (email: string) => updateLoginForm({ email }),
+    updateEmail: (email: string) => {
+      updateLoginForm({ email });
+      // メールアドレスが変更されたらレート制限情報をリセット
+      setRemainingAttempts(null);
+      setLockoutTime(null);
+      setWaitTime(0);
+    },
     updatePassword: (password: string) => updateLoginForm({ password }),
     handleSubmit,
     clearForm: clearLoginForm,
     isSubmitting: form.isSubmitting || signInMutation.isPending,
+    remainingAttempts,
+    isLocked: !!lockoutTime,
+    lockoutTimeRemaining: waitTime,
   };
 };
 

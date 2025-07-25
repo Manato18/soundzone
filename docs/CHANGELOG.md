@@ -1,77 +1,111 @@
 # SoundZone - 変更履歴
 
-## [2025-07-24] audioPin機能の状態管理移行
+## [2025-07-25] 認証システムのセキュリティ強化（Phase 1 & 2）
 
 ### 概要
-audioPin機能をReact標準のuseStateからZustand + TanStack Queryベースの状態管理に移行しました。StateManagement.mdの規約に基づいた実装です。
+AUTH_ISSUES_SOLUTIONS.mdに基づいて、認証システムの重大なセキュリティ問題を修正し、UX改善を実装しました。
 
-### 追加ファイル
-1. **src/features/audioPin/application/audioPin-store.ts**
-   - UI状態（selectedPin、isModalVisible、playbackState）の管理
-   - 再生管理機能（play/pause/stop、シーク、音量）
-   - 設定の永続化（autoPlay、playbackSpeed、volume）
+### Phase 1: 緊急対応（完了）
 
-2. **src/features/audioPin/infrastructure/audioPin-service.ts**
-   - モックAPIサービス層
-   - CRUD操作（create、read、update、delete）
-   - 将来的なSupabase連携を想定した設計
+#### 1. ハードコードされた暗号化キーの修正
+**追加ファイル:**
+- `src/shared/infra/security/encryptionKeyManager.ts`
+  - expo-secure-storeを使用したキーチェーン保存
+  - 初回起動時の自動キー生成
+  - フォールバック機構
 
-3. **読み取り操作フック（read/）**
-   - `useAudioPinsQuery.ts`: ピン一覧取得（レイヤー・範囲フィルタリング対応）
-   - `useAudioPinQuery.ts`: 単一ピン詳細取得
+- `src/shared/infra/initialization/appInitializer.ts`
+  - アプリ起動時の初期化処理
 
-4. **書き込み操作フック（write/）**
-   - `useCreateAudioPinMutation.ts`: ピン作成
-   - `useUpdateAudioPinMutation.ts`: ピン更新
-   - `useDeleteAudioPinMutation.ts`: ピン削除
+**変更ファイル:**
+- `src/shared/infra/storage/mmkvStorage.ts`
+  - 動的な暗号化キー取得
+  - フォールバック対応
+- `App.tsx`
+  - 初期化処理の追加
+- 各storeファイル
+  - グローバルmmkvStorageの使用
 
-### 変更ファイル
-1. **src/features/audioPin/presentation/hooks/useAudioPins.ts**
-   - Zustandストアとクエリフックを使用するように完全書き換え
-   - レイヤーフィルタリングをクエリレベルで実行
+#### 2. トークン自動更新の実装
+**追加ファイル:**
+- `src/features/auth/infra/services/authTokenManager.ts`
+  - 期限5分前の自動更新
+  - onAuthStateChangeイベント監視
+  - スケジューリング機能
 
-2. **src/features/home/presentation/HomeScreen.tsx**
-   - `useAudioPinFiltering`の削除
-   - レイヤーIDを直接`useAudioPins`に渡すように変更
+- `src/features/auth/infra/services/authInterceptor.ts`
+  - API呼び出し前のトークン検証
+  - 401エラー時の自動リトライ
 
-3. **src/constants/StorageKeys.ts**
-   - AUDIO_PIN関連のキーを追加
+- `src/features/auth/presentation/hooks/use-auth-api.ts`
+  - 認証付きAPI呼び出しフック
 
-### バグ修正
-1. **無限ループエラーの修正**
-   - 問題: セレクターフックが毎回新しいオブジェクトを作成
-   - 解決: 各プロパティを個別に取得してからオブジェクトを構築
-   - 影響: `audioPin-store.ts`と`location-store.ts`の両方で修正
+#### 3. 認証状態の永続化
+**追加ファイル:**
+- `src/features/auth/infra/services/sessionPersistence.ts`
+  - refreshToken: expo-secure-store保存
+  - メタデータ: MMKV保存
+  - 30日間のセッションタイムアウト
 
-### 新機能
-1. **音声再生管理**
-   - 再生/一時停止/停止の状態管理
-   - シーク機能
-   - 音量調整（0-1の範囲で正規化）
-   - 再生速度の設定
+- `src/features/auth/infra/services/sessionRestoration.ts`
+  - アプリ起動時の自動復元
+  - セッション有効性チェック
 
-2. **設定の永続化**
-   - 自動再生のON/OFF
-   - 再生速度の保存
-   - 音量設定の保存
-   - ピン詳細表示設定
+**変更ファイル:**
+- `src/features/auth/infrastructure/auth-service.ts`
+  - ログイン/サインアップ時の永続化
+  - ログアウト時のクリア
+- `src/navigation/RootNavigator.tsx`
+  - セッション変更の監視
 
-3. **クエリレベルのフィルタリング**
-   - レイヤーIDによるフィルタリング
-   - 地図の表示範囲によるフィルタリング（bounds）
+### Phase 2: セキュリティ強化（完了）
+
+#### 1. レート制限の実装
+**追加ファイル:**
+- `src/features/auth/infra/services/rateLimiter.ts`
+  - 5回試行で15分ロックアウト
+  - Exponential backoff（2秒→4秒→8秒...）
+  - メモリ内カウント管理
+
+**変更ファイル:**
+- `src/features/auth/presentation/hooks/use-auth.ts`
+  - useLoginFormHookにレート制限追加
+  - ロックアウト状態の管理
+- `src/features/auth/presentation/LoginScreen.tsx`
+  - 残り試行回数の表示
+  - ロックアウト時のカウントダウン
+  - UIフィードバックの改善
+
+#### 2. エラーメッセージのサニタイズ
+**追加ファイル:**
+- `src/features/auth/infra/services/errorSanitizer.ts`
+  - カテゴリベースのエラー分類
+  - 正規表現パターンマッチング
+  - ユーザーフレンドリーな日本語メッセージ
+  - 開発環境での詳細表示
+
+**変更ファイル:**
+- `src/features/auth/infrastructure/auth-service.ts`
+  - translateErrorメソッドの削除
+  - 全エラーでerrorSanitizer使用
+
+### パッケージ追加
+- `expo-secure-store`: セキュアなキー/トークン保存
+- `expo-crypto`: 暗号化キー生成
 
 ### 技術的な改善点
-- Clean Architectureに準拠した4層構造
-- サーバー状態とUI状態の明確な分離
-- 型安全性の向上
-- キャッシュ管理の最適化（staleTime: 5分、gcTime: 15分）
-- 楽観的更新の準備
+- セキュアな暗号化キー管理
+- トークンの自動更新によるシームレスな認証維持
+- セッションの永続化による再ログイン不要化
+- ブルートフォース攻撃への対策
+- エラー情報の漏洩防止
 
-### 削除予定
-- `useAudioPinFiltering.ts`: クエリレベルでのフィルタリングに置き換え
+### 削除項目
+- ハードコードされた暗号化キー
+- translateErrorメソッド（errorSanitizerに置き換え）
 
-### 次のステップ
-- 音声ファイルアップロード機能の実装
-- Supabaseとの実際の連携
-- リアルタイム同期機能の追加
-- オフライン対応
+### ディレクトリ構造の整理
+- `src/features/auth/infrastructure/` ディレクトリを削除
+- `src/features/auth/infrastructure/auth-service.ts` を `src/features/auth/infra/services/authService.ts` に移動・統合
+- ファイル名をcamelCase規約に統一（auth-service.ts → authService.ts）
+- 全ての関連インポートパスを更新
