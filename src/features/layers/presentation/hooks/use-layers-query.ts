@@ -105,34 +105,64 @@ export const useSaveUserLayerPreferencesMutation = () => {
 
 /**
  * カスタムレイヤーを作成するミューテーションフック
+ * React Query標準の楽観的更新を使用
  */
 export const useCreateLayerMutation = () => {
   const queryClient = useQueryClient();
-  const setAvailableLayers = useLayersStore(state => state.setAvailableLayers);
   
   return useMutation({
     mutationFn: async (layer: Omit<Layer, 'id'>) => {
       return await layersService.createCustomLayer(layer);
     },
-    onSuccess: (newLayer) => {
-      // レイヤー一覧のキャッシュを無効化
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.layer.list(),
-      });
+    onMutate: async (newLayer) => {
+      // 既存のクエリをキャンセル
+      await queryClient.cancelQueries({ queryKey: queryKeys.layer.list() });
       
-      // 楽観的更新: ストアに新しいレイヤーを追加
-      const currentLayers = useLayersStore.getState().availableLayers;
-      setAvailableLayers([...currentLayers, newLayer]);
+      // 楽観的更新用の一時的なレイヤー
+      const optimisticLayer: Layer = {
+        ...newLayer,
+        id: `temp-${Date.now()}`,
+        isSelected: true,
+      };
+      
+      // 現在のデータを取得
+      const previousLayers = queryClient.getQueryData<Layer[]>(queryKeys.layer.list());
+      
+      // 楽観的更新
+      if (previousLayers) {
+        queryClient.setQueryData<Layer[]>(
+          queryKeys.layer.list(),
+          [...previousLayers, optimisticLayer]
+        );
+      }
+      
+      // ロールバック用のコンテキストを返す
+      return { previousLayers };
+    },
+    onError: (err, newLayer, context) => {
+      // エラー時は元に戻す
+      if (context?.previousLayers) {
+        queryClient.setQueryData(queryKeys.layer.list(), context.previousLayers);
+      }
+      
+      // エラーをZustandストアに設定
+      useLayersStore.getState().setError(
+        err instanceof Error ? err.message : 'レイヤーの作成に失敗しました'
+      );
+    },
+    onSettled: () => {
+      // 成功・失敗に関わらず最新データを取得
+      queryClient.invalidateQueries({ queryKey: queryKeys.layer.list() });
     },
   });
 };
 
 /**
  * レイヤーを更新するミューテーションフック
+ * React Query標準の楽観的更新を使用
  */
 export const useUpdateLayerMutation = () => {
   const queryClient = useQueryClient();
-  const setAvailableLayers = useLayersStore(state => state.setAvailableLayers);
   
   return useMutation({
     mutationFn: async ({ layerId, updates }: {
@@ -141,46 +171,98 @@ export const useUpdateLayerMutation = () => {
     }) => {
       return await layersService.updateLayer(layerId, updates);
     },
-    onSuccess: (updatedLayer) => {
-      // レイヤー一覧のキャッシュを無効化
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.layer.list(),
-      });
+    onMutate: async ({ layerId, updates }) => {
+      // 既存のクエリをキャンセル
+      await queryClient.cancelQueries({ queryKey: queryKeys.layer.list() });
       
-      // 楽観的更新: ストアのレイヤーを更新
-      const currentLayers = useLayersStore.getState().availableLayers;
-      setAvailableLayers(
-        currentLayers.map(layer => 
-          layer.id === updatedLayer.id ? updatedLayer : layer
-        )
+      // 現在のデータを取得
+      const previousLayers = queryClient.getQueryData<Layer[]>(queryKeys.layer.list());
+      
+      // 楽観的更新
+      if (previousLayers) {
+        queryClient.setQueryData<Layer[]>(
+          queryKeys.layer.list(),
+          previousLayers.map(layer => 
+            layer.id === layerId 
+              ? { ...layer, ...updates }
+              : layer
+          )
+        );
+      }
+      
+      // ロールバック用のコンテキストを返す
+      return { previousLayers };
+    },
+    onError: (err, _, context) => {
+      // エラー時は元に戻す
+      if (context?.previousLayers) {
+        queryClient.setQueryData(queryKeys.layer.list(), context.previousLayers);
+      }
+      
+      // エラーをZustandストアに設定
+      useLayersStore.getState().setError(
+        err instanceof Error ? err.message : 'レイヤーの更新に失敗しました'
       );
+    },
+    onSettled: () => {
+      // 成功・失敗に関わらず最新データを取得
+      queryClient.invalidateQueries({ queryKey: queryKeys.layer.list() });
     },
   });
 };
 
 /**
  * レイヤーを削除するミューテーションフック
+ * React Query標準の楽観的更新を使用
  */
 export const useDeleteLayerMutation = () => {
   const queryClient = useQueryClient();
-  const setAvailableLayers = useLayersStore(state => state.setAvailableLayers);
   
   return useMutation({
     mutationFn: async (layerId: string) => {
       await layersService.deleteLayer(layerId);
       return layerId;
     },
-    onSuccess: (deletedLayerId) => {
-      // レイヤー一覧のキャッシュを無効化
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.layer.list(),
-      });
+    onMutate: async (layerId) => {
+      // 既存のクエリをキャンセル
+      await queryClient.cancelQueries({ queryKey: queryKeys.layer.list() });
       
-      // 楽観的更新: ストアからレイヤーを削除
-      const currentLayers = useLayersStore.getState().availableLayers;
-      setAvailableLayers(
-        currentLayers.filter(layer => layer.id !== deletedLayerId)
+      // 現在のデータを取得
+      const previousLayers = queryClient.getQueryData<Layer[]>(queryKeys.layer.list());
+      
+      // 楽観的更新
+      if (previousLayers) {
+        queryClient.setQueryData<Layer[]>(
+          queryKeys.layer.list(),
+          previousLayers.filter(layer => layer.id !== layerId)
+        );
+      }
+      
+      // 選択状態からも削除
+      const currentSelectedIds = useLayersStore.getState().selectedLayerIds;
+      if (currentSelectedIds.includes(layerId)) {
+        useLayersStore.getState().setSelectedLayerIds(
+          currentSelectedIds.filter(id => id !== layerId)
+        );
+      }
+      
+      // ロールバック用のコンテキストを返す
+      return { previousLayers };
+    },
+    onError: (err, _, context) => {
+      // エラー時は元に戻す
+      if (context?.previousLayers) {
+        queryClient.setQueryData(queryKeys.layer.list(), context.previousLayers);
+      }
+      
+      // エラーをZustandストアに設定
+      useLayersStore.getState().setError(
+        err instanceof Error ? err.message : 'レイヤーの削除に失敗しました'
       );
+    },
+    onSettled: () => {
+      // 成功・失敗に関わらず最新データを取得
+      queryClient.invalidateQueries({ queryKey: queryKeys.layer.list() });
     },
   });
 };

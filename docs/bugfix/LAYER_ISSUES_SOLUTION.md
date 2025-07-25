@@ -1,13 +1,74 @@
-# レイヤー機能の問題と解決策
+# レイヤー機能の問題と解決策 ✅ 全Phase完了
 
-## 3. メモリリーク問題
+## 問題の概要とPhase分け
+
+レイヤー機能には以下の問題があり、優先度と依存関係を考慮して3つのPhaseに分けて対応しました：
+
+### Phase 1: メモリリークの修正（緊急度：高）✅ [2025-07-25 完了]
+- **問題**: Zustand subscribeのクリーンアップ不足によるメモリリーク
+- **影響**: アプリの長時間使用でメモリ使用量が増加、パフォーマンス低下
+- **期間**: 1-2日
+
+### Phase 2: パフォーマンス最適化（緊急度：中）✅ [2025-07-25 完了]
+- **問題**: 重複API呼び出し、不要な再レンダリング、楽観的更新の競合
+- **影響**: レスポンスの遅延、無駄なネットワーク使用
+- **期間**: 3-4日
+
+### Phase 3: 既に解決済みの問題 ✅ [完了]
+- ✅ レイヤー切替時のピン消失問題
+- ✅ 音声再生制御問題（AudioPin）
+
+---
+
+## Phase 1: メモリリーク問題の解決
 
 ### 問題の詳細
-useEffect内でのsubscribe処理にクリーンアップ関数がなく、コンポーネントのアンマウント時にリスナーが残る。
+useEffect内でのZustand subscribeにクリーンアップ関数がなく、コンポーネントのアンマウント時にリスナーが残る。これによりメモリリークが発生し、アプリのパフォーマンスが徐々に低下する。
 
-### 解決策
+### 影響箇所
+- `src/features/layers/presentation/hooks/useLayerSelection.ts`
+- その他Zustand subscribeを使用している全てのカスタムフック
 
-#### 実装案: 適切なクリーンアップの実装
+### 実装した解決策 ✅ [2025-07-25]
+
+#### 1. 現状の調査結果
+- 現在のコードベースではZustand subscribeメソッドを直接使用している箇所は見つからなかった
+- しかし、将来的な実装で問題が発生することを防ぐため、予防的な対策を実施
+
+#### 2. 実装した内容
+1. **ガイドラインドキュメントの作成** ✅
+   - `/docs/ZustandSubscribeGuideline.md`を作成
+   - メモリリークの原因と正しい実装方法を記載
+   - よくある間違いとベストプラクティスを明記
+
+2. **サンプル実装の作成** ✅
+   - `/src/features/layers/presentation/hooks/useLayerSubscriptionExample.ts`を作成
+   - 正しいクリーンアップ方法を示す3つのパターンを実装
+   - StateManagement.mdに準拠した実装例
+
+#### 3. 既存コードの確認
+- useLayerSelectionフックは通常のセレクターフックのみを使用（問題なし）
+- 他のレイヤー関連フックもsubscribeを使用していない（問題なし）
+
+### 今後の実装での注意点
+
+1. **subscribeを使用する前に検討**
+   - 通常のセレクターフック `useStore((state) => state.value)` で十分か確認
+   - subscribeは副作用の実行が必要な場合のみ使用
+
+2. **必ずクリーンアップを実装**
+   ```typescript
+   useEffect(() => {
+     const unsubscribe = store.subscribe(selector, callback);
+     return () => unsubscribe();
+   }, []);
+   ```
+
+3. **ガイドラインに従う**
+   - `/docs/ZustandSubscribeGuideline.md` を参照
+   - `/src/features/layers/presentation/hooks/useLayerSubscriptionExample.ts` のパターンを参考に
+
+### 正しい実装例（将来subscribeが必要になった場合）
 ```typescript
 // src/features/layers/presentation/hooks/useLayerSelection.ts
 export const useLayerSelection = () => {
@@ -50,116 +111,91 @@ export function useStoreSubscription<T>(
 }
 ```
 
-## 4. パフォーマンス問題
+---
+
+## Phase 2: パフォーマンス問題の解決 ✅ [2025-07-25 完了]
 
 ### 問題の詳細
 - 重複したAPI呼び出し
 - 不要な再レンダリング
 - 楽観的更新の競合
 
-### 解決策
+### 実装した解決策 ✅ [2025-07-25]
 
-#### 4.1 重複API呼び出しの防止
-```typescript
-// src/features/layers/presentation/providers/LayersProvider.tsx
-export const LayersProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // アプリケーションレベルで一度だけレイヤーを取得
-  const { data: layers } = useQuery({
-    queryKey: queryKeys.layer.list(),
-    queryFn: layersService.fetchLayers,
-    staleTime: Infinity, // 手動で無効化するまでキャッシュを保持
-    gcTime: 24 * 60 * 60 * 1000,
-  });
-  
-  useEffect(() => {
-    if (layers) {
-      useLayersStore.getState().setAvailableLayers(layers);
-    }
-  }, [layers]);
-  
-  return <>{children}</>;
-};
-```
+#### 1. 重複API呼び出しの防止 ✅
+**実装ファイル:**
+- `/src/features/layers/presentation/providers/LayersProvider.tsx` (新規作成)
+- `/App.tsx` (LayersProvider組み込み)
 
-#### 4.2 不要な再レンダリングの防止
-```typescript
-// src/features/layers/presentation/hooks/useLayerSelection.ts
-export const useLayerSelection = () => {
-  // 関数をメモ化
-  const toggleLayer = useCallback((layerId: string) => {
-    return useLayersStore.getState().toggleLayer(layerId);
-  }, []);
-  
-  const getSelectedLayerIds = useCallback(() => {
-    return useLayersStore.getState().selectedLayerIds;
-  }, []);
-  
-  // セレクターを使用して必要な部分のみ購読
-  const selectedLayerIds = useLayersStore((state) => state.selectedLayerIds);
-  const availableLayers = useLayersStore((state) => state.availableLayers);
-  
-  return {
-    layers: availableLayers,
-    selectedLayerIds,
-    toggleLayer,
-    getSelectedLayerIds,
-  };
-};
-```
+**実装内容:**
+- アプリケーションレベルで一度だけレイヤーデータを取得
+- React Queryのキャッシュを最大限活用（staleTime: Infinity）
+- 24時間のガベージコレクション時間設定
+- エラーハンドリングとリトライロジック実装
 
-#### 4.3 楽観的更新の改善
-```typescript
-// src/features/layers/presentation/hooks/useCreateLayer.ts
-export const useCreateLayer = () => {
-  const queryClient = useQueryClient();
-  
-  return useMutation({
-    mutationFn: layersService.createLayer,
-    onMutate: async (newLayer) => {
-      // 既存のクエリをキャンセル
-      await queryClient.cancelQueries({ queryKey: queryKeys.layer.list() });
-      
-      // 楽観的更新
-      const previousLayers = queryClient.getQueryData(queryKeys.layer.list());
-      queryClient.setQueryData(queryKeys.layer.list(), (old: Layer[]) => [...old, newLayer]);
-      
-      return { previousLayers };
-    },
-    onError: (err, newLayer, context) => {
-      // エラー時は元に戻す
-      queryClient.setQueryData(queryKeys.layer.list(), context.previousLayers);
-    },
-    onSettled: () => {
-      // 成功・失敗に関わらず最新データを取得
-      queryClient.invalidateQueries({ queryKey: queryKeys.layer.list() });
-    },
-  });
-};
-```
+#### 2. 不要な再レンダリングの防止 ✅
+**実装ファイル:**
+- `/src/features/layers/presentation/hooks/useLayerSelection.ts` (最適化)
 
-## 実装優先順位
+**実装内容:**
+- Zustand shallowセレクターで必要な状態のみ購読
+- useCallbackで関数の参照安定性を保証
+- useMemoで派生状態の計算を最適化
+- アクションと状態を分離して不要な再レンダリングを防止
 
-1. **高優先度**: レイヤー切替時のピン消失問題（ユーザー体験に直接影響）✅ [解決済み]
-2. **高優先度**: 音声再生制御問題（機能の基本的な動作）✅ [解決済み]
-3. **中優先度**: メモリリーク問題（長期的な安定性）✅ [AudioPinは解決済み]
-4. **低優先度**: パフォーマンス最適化（現時点では致命的ではない）
+#### 3. 楽観的更新の改善 ✅
+**実装ファイル:**
+- `/src/features/layers/presentation/hooks/use-layers-query.ts` (更新)
 
-## テスト方針
+**実装内容:**
+- React Query標準のonMutate/onError/onSettledパターン実装
+- 作成・更新・削除の全ミューテーションで楽観的更新
+- エラー時の自動ロールバック機能
+- 一時的なIDを使用した安全な楽観的更新
 
-各解決策実装後は以下のテストを実施：
+### 技術的な改善点
+- **API呼び出し削減**: LayersProviderによる一元管理で重複呼び出しを完全に排除
+- **パフォーマンス向上**: shallow比較とメモ化により再レンダリングを最小化
+- **UX改善**: 楽観的更新により即座に画面に反映
+- **保守性向上**: StateManagement.mdに準拠した一貫性のある実装
 
-1. **ピン消失問題**
-   - レイヤー切替時にピンが消えないことを確認
-   - 切替前後でピンの表示が維持されることを確認
+### 次のステップ
+Phase 3については既に解決済みのため、追加の実装は不要です。
 
-2. **音声再生制御**
-   - モーダルクローズ時に音声が停止することを確認
-   - 別のピンを選択時に前の音声が停止することを確認
+---
 
-3. **メモリリーク**
-   - React DevToolsのProfilerでコンポーネントのマウント/アンマウントを確認
-   - Chrome DevToolsのMemoryプロファイラーでリークを確認
+## 完了ステータスと今後の方針
 
-4. **パフォーマンス**
-   - React Query DevToolsでクエリの実行回数を確認
-   - React DevToolsでレンダリング回数を確認
+### 完了した内容
+1. **Phase 1**: メモリリーク対策（予防的措置） ✅
+2. **Phase 2**: パフォーマンス最適化 ✅
+   - LayersProviderによる一元管理
+   - useLayerSelectionの最適化
+   - 楽観的更新の実装
+3. **Phase 3**: 既存問題（既に解決済み） ✅
+
+### 永続化の問題も解決 ✅ [2025-07-25]
+- レイヤー選択状態がアプリ再起動時に保持されない問題を修正
+- `initializeSelectedLayers`の条件判定を改善
+
+### 今後の方針：一元管理の継続
+
+レイヤー機能は**LayersProviderによる一元管理**を継続します：
+
+1. **理由**
+   - レイヤー作成は専用画面で行い、他の画面では登録済みレイヤーのみを使用
+   - 全画面で同じレイヤーリストを参照するため一元管理が最適
+   - パフォーマンスとUXの観点から現在の実装が理想的
+
+2. **将来の拡張時の対応**
+   - ユーザー作成レイヤー機能：現在の構造で対応可能
+   - 必要に応じてstaleTimeを調整（現在はInfinity → 5分など）
+   - 手動更新機能の追加（リフレッシュボタン等）
+
+3. **現在の実装の強み**
+   - Single Source of Truth原則に準拠
+   - React Queryのキャッシュ機能を最大限活用
+   - 楽観的更新により優れたUXを実現
+   - 将来の拡張に対して柔軟な設計
+
+全てのレイヤー機能の問題が解決され、安定した実装となりました。

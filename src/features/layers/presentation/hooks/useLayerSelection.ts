@@ -1,47 +1,68 @@
 import { useCallback, useMemo } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useLayersStore, layersSelectors } from '../../application/layers-store';
 import { Layer } from '../../domain/entities/Layer';
-import { useLayersQuery } from './use-layers-query';
 
 /**
  * レイヤー選択機能を提供するフック
  * 既存のインターフェースを維持しながら、内部でZustandストアを使用
  */
 export const useLayerSelection = () => {
-  // Zustandストアから必要な状態とアクションを取得
-  const availableLayers = useLayersStore(state => state.availableLayers);
-  const selectedLayerIds = useLayersStore(state => state.selectedLayerIds);
+  // パフォーマンス最適化: 必要な状態のみをセレクターで取得
+  const { availableLayers, selectedLayerIds } = useLayersStore(
+    useShallow((state) => ({
+      availableLayers: state.availableLayers,
+      selectedLayerIds: state.selectedLayerIds,
+    }))
+  );
+  
+  // アクションは別途取得（状態変更時に再レンダリングしない）
   const toggleLayerAction = useLayersStore(state => state.toggleLayer);
   const toggleAllLayersAction = useLayersStore(state => state.toggleAllLayers);
-  
-  // レイヤーデータを取得（初回のみ）
-  useLayersQuery();
+  const setSelectedLayerIds = useLayersStore(state => state.setSelectedLayerIds);
   
   // 選択状態を含むレイヤー配列を生成
   const layers = useMemo<Layer[]>(() => {
-    return availableLayers.map(layer => ({
+    return availableLayers.map((layer: Layer) => ({
       ...layer,
       isSelected: selectedLayerIds.includes(layer.id),
     }));
   }, [availableLayers, selectedLayerIds]);
   
-  // レイヤーの選択/解除をトグルする
+  // レイヤーの選択/解除をトグルする（メモ化）
   const toggleLayer = useCallback((layerId: string) => {
     toggleLayerAction(layerId);
   }, [toggleLayerAction]);
   
-  // 選択されているレイヤーIDの配列を取得
-  const getSelectedLayerIds = (): string[] => selectedLayerIds;
+  // 選択されているレイヤーIDの配列を取得（メモ化）
+  const getSelectedLayerIds = useCallback((): string[] => {
+    return useLayersStore.getState().selectedLayerIds;
+  }, []);
   
-  // すべてのレイヤーを選択/解除
+  // すべてのレイヤーを選択/解除（メモ化）
   const toggleAllLayers = useCallback((select: boolean = true) => {
     toggleAllLayersAction(select);
   }, [toggleAllLayersAction]);
   
+  // 特定のレイヤーIDを設定（メモ化）
+  const setSelectedLayers = useCallback((layerIds: string[]) => {
+    setSelectedLayerIds(layerIds);
+  }, [setSelectedLayerIds]);
+  
+  // 選択されたレイヤーオブジェクトを取得（メモ化）
+  const selectedLayers = useMemo(() => {
+    return availableLayers.filter((layer: Layer) => 
+      selectedLayerIds.includes(layer.id)
+    );
+  }, [availableLayers, selectedLayerIds]);
+  
   return {
     layers,
+    selectedLayers,
+    selectedLayerIds,
     toggleLayer,
     getSelectedLayerIds,
+    setSelectedLayers,
     toggleAllLayers,
   };
 }; 
