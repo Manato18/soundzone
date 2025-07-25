@@ -2,6 +2,8 @@ import { Ionicons } from '@expo/vector-icons';
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
+  AppState,
+  AppStateStatus,
   Dimensions,
   Image,
   Modal,
@@ -21,6 +23,7 @@ import TrackPlayer, {
 import { getLayersByIds } from '../src/features/layers/domain/utils/layerUtils';
 import { trackPlayerSetup } from '../src/shared/services/trackPlayerSetup';
 import { formatDuration, getRelativeTime } from '../src/shared/utils/timeUtils';
+import { usePlaybackActions, useAudioPinStore } from '../src/features/audioPin/application/audioPin-store';
 
 interface AudioData {
   id: string;
@@ -63,6 +66,9 @@ export default function AudioPlayerModal({ visible, onClose, audioData }: AudioP
   // react-native-track-playerのフックを使用
   const playbackState = usePlaybackState();
   const progress = useProgress();
+  
+  // Zustandストアのアクション
+  const { stopPlayback, startPlayback, pausePlayback } = usePlaybackActions();
 
   // マウント・アンマウント管理
   useLayoutEffect(() => {
@@ -71,6 +77,21 @@ export default function AudioPlayerModal({ visible, onClose, audioData }: AudioP
       isMountedRef.current = false;
     };
   }, []);
+
+  // コンポーネントアンマウント時のクリーンアップ
+  useEffect(() => {
+    return () => {
+      // アンマウント時に音声を確実に停止
+      TrackPlayer.stop().catch(error => {
+        console.error('Error stopping audio on unmount:', error);
+      });
+      TrackPlayer.reset().catch(error => {
+        console.error('Error resetting audio on unmount:', error);
+      });
+      // Zustandストアの状態もクリア
+      stopPlayback();
+    };
+  }, [stopPlayback]);
 
   // 安全な状態更新関数
   const safeSetState = useCallback((setter: () => void) => {
@@ -199,9 +220,23 @@ export default function AudioPlayerModal({ visible, onClose, audioData }: AudioP
   }, [slideAnim, safeSetState]);
 
   // モーダルクローズアニメーション
-  const closeModal = useCallback(() => {
-    animateToState('CLOSED');
-  }, [animateToState]);
+  const closeModal = useCallback(async () => {
+    try {
+      // 音声を停止
+      await TrackPlayer.stop();
+      await TrackPlayer.reset();
+      
+      // Zustandストアの再生状態をクリア
+      stopPlayback();
+      
+      // アニメーションで閉じる
+      animateToState('CLOSED');
+    } catch (error) {
+      console.error('Error closing audio modal:', error);
+      // エラーが発生してもモーダルは閉じる
+      animateToState('CLOSED');
+    }
+  }, [animateToState, stopPlayback]);
 
   // バックドロップタップでモーダルを閉じる
   const handleBackdropPress = () => {
@@ -251,6 +286,13 @@ export default function AudioPlayerModal({ visible, onClose, audioData }: AudioP
           setIsPlayerReady(true);
         });
       }
+      
+      // 自動再生が有効な場合は再生開始
+      const { settings } = useAudioPinStore.getState();
+      if (settings.autoPlayOnPinTap && isMountedRef.current) {
+        await TrackPlayer.play();
+        startPlayback(audioData.id);
+      }
 
     } catch (error) {
       console.error('音声設定エラー:', error);
@@ -261,7 +303,7 @@ export default function AudioPlayerModal({ visible, onClose, audioData }: AudioP
         });
       }
     }
-  }, [audioData, safeSetState]);
+  }, [audioData, safeSetState, startPlayback]);
 
   // visibleとaudioDataの変化を監視（安全な状態更新）
   useEffect(() => {
@@ -283,13 +325,36 @@ export default function AudioPlayerModal({ visible, onClose, audioData }: AudioP
     currentStateRef.current = currentState;
   }, [currentState]);
 
+  // バックグラウンド時の音声処理
+  useEffect(() => {
+    const handleAppStateChange = (nextAppState: AppStateStatus) => {
+      if (nextAppState === 'background' && playbackState.state === State.Playing) {
+        // バックグラウンドに移行時、再生中なら一時停止
+        TrackPlayer.pause().catch(error => {
+          console.error('Error pausing audio on background:', error);
+        });
+      }
+    };
+    
+    const subscription = AppState.addEventListener('change', handleAppStateChange);
+    return () => {
+      subscription.remove();
+    };
+  }, [playbackState.state]);
+
   // 音声再生/停止
   const togglePlayback = async () => {
     try {
       if (playbackState.state === State.Playing) {
         await TrackPlayer.pause();
+        // Zustandストアに一時停止を通知
+        pausePlayback();
       } else {
         await TrackPlayer.play();
+        // Zustandストアに再生開始を通知
+        if (audioData) {
+          startPlayback(audioData.id);
+        }
       }
     } catch (error) {
       console.error('再生エラー:', error);
