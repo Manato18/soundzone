@@ -3,7 +3,6 @@ import { StyleSheet, View, Text } from 'react-native';
 import MapView from 'react-native-maps';
 import AudioPlayerModal from '../../../../components/AudioPlayerModal';
 import { AudioPinMarkers } from '../../audioPin/presentation/components/AudioPinMarkers';
-import { useAudioPinFiltering } from '../../audioPin/presentation/hooks/useAudioPinFiltering';
 import { useAudioPins } from '../../audioPin/presentation/hooks/useAudioPins';
 import { LayerSelector } from '../../layers/presentation/components/LayerSelector';
 import { useLayerSelection } from '../../layers/presentation/hooks/useLayerSelection';
@@ -20,10 +19,10 @@ export default function HomeScreen() {
   
   // 各ドメインのhookを使用
   const { location, errorMsg } = useLocation();
-  const { audioPins, selectedAudio, modalVisible, handlePinPress, handleCloseModal } = useAudioPins();
   const { region, updateRegion } = useMapRegion();
   const { centerOnUserLocation } = useMapWithLocation(mapRef);
   const { isFollowingUser } = useMapFollowing();
+  const { layers, toggleLayer, getSelectedLayerIds } = useLayerSelection();
   
   // 最後の有効な位置情報を保持（チカチカ防止）
   const [stableLocation, setStableLocation] = useState(location);
@@ -41,11 +40,17 @@ export default function HomeScreen() {
     }
   }, [location]);
   
-  // レイヤー機能
-  const { layers, toggleLayer, getSelectedLayerIds } = useLayerSelection();
-  const { filteredPins } = useAudioPinFiltering({
-    pins: audioPins,
-    selectedLayerIds: getSelectedLayerIds(),
+  // オーディオピン機能（選択されたレイヤーでフィルタリング）
+  const { 
+    audioPins, 
+    selectedAudio, 
+    modalVisible, 
+    handlePinPress, 
+    handleCloseModal,
+    isLoading,
+    error
+  } = useAudioPins({
+    layerIds: getSelectedLayerIds(),
   });
 
   return (
@@ -57,7 +62,7 @@ export default function HomeScreen() {
         userLocation={stableLocation}
       >
         <AudioPinMarkers
-          pins={filteredPins}
+          pins={audioPins}
           onPinPress={handlePinPress}
         />
       </MapContainer>
