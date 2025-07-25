@@ -1,118 +1,5 @@
 # レイヤー機能の問題と解決策
 
-## 1. レイヤー切替時のピン消失問題
-
-### 問題の詳細
-レイヤーを切り替えると、React Queryの新しいクエリキーにより一時的にデータがundefinedになり、地図上のピンが消えてから再表示される。
-
-### 解決策
-
-#### 方法1: keepPreviousDataの使用（推奨）
-```typescript
-// src/features/audioPin/presentation/hooks/useAudioPinsQuery.ts
-import { keepPreviousData } from '@tanstack/react-query';
-
-export const useAudioPinsQuery = ({ layerIds, bounds }: UseAudioPinsQueryParams) => {
-  const query = useQuery({
-    queryKey: ['audioPins', { layerIds, bounds }],
-    queryFn: async () => {
-      // 既存の実装
-    },
-    placeholderData: keepPreviousData, // 前回のデータを保持
-    staleTime: 5 * 60 * 1000,
-    gcTime: 10 * 60 * 1000,
-  });
-  
-  return query;
-};
-```
-
-#### 方法2: 楽観的キャッシュ更新
-```typescript
-// src/features/layers/presentation/hooks/useLayerSelection.ts
-const handleLayerToggle = (layerId: string) => {
-  const previousLayerIds = getSelectedLayerIds();
-  const newLayerIds = toggleLayer(layerId);
-  
-  // 既存のピンデータを新しいクエリキーにコピー
-  const existingData = queryClient.getQueryData(['audioPins', { layerIds: previousLayerIds, bounds }]);
-  if (existingData) {
-    queryClient.setQueryData(['audioPins', { layerIds: newLayerIds, bounds }], existingData);
-  }
-};
-```
-
-## 2. 音声再生制御問題
-
-### 問題の詳細
-AudioPinModalを閉じても音声が再生され続け、停止する手段がない。
-
-### 解決策
-
-#### 実装案: Audio管理サービスの作成
-```typescript
-// src/features/audioPin/infrastructure/audio-manager.ts
-class AudioManager {
-  private currentAudio: HTMLAudioElement | null = null;
-  
-  play(url: string): Promise<void> {
-    // 既存の音声を停止
-    this.stop();
-    
-    this.currentAudio = new Audio(url);
-    return this.currentAudio.play();
-  }
-  
-  stop(): void {
-    if (this.currentAudio) {
-      this.currentAudio.pause();
-      this.currentAudio.currentTime = 0;
-      this.currentAudio = null;
-    }
-  }
-  
-  pause(): void {
-    this.currentAudio?.pause();
-  }
-  
-  resume(): void {
-    this.currentAudio?.play();
-  }
-}
-
-export const audioManager = new AudioManager();
-```
-
-#### AudioPinModalでの使用
-```typescript
-// src/features/audioPin/presentation/components/AudioPinModal.tsx
-import { audioManager } from '../../infrastructure/audio-manager';
-
-const AudioPinModal = ({ isOpen, onClose, pin }) => {
-  const handleClose = useCallback(() => {
-    audioManager.stop(); // 音声を停止
-    onClose();
-  }, [onClose]);
-  
-  const handlePlay = useCallback(() => {
-    audioManager.play(pin.audioUrl);
-  }, [pin.audioUrl]);
-  
-  // コンポーネントのアンマウント時も音声を停止
-  useEffect(() => {
-    return () => {
-      audioManager.stop();
-    };
-  }, []);
-  
-  return (
-    <Modal isOpen={isOpen} onClose={handleClose}>
-      {/* モーダルの内容 */}
-    </Modal>
-  );
-};
-```
-
 ## 3. メモリリーク問題
 
 ### 問題の詳細
@@ -252,9 +139,9 @@ export const useCreateLayer = () => {
 
 ## 実装優先順位
 
-1. **高優先度**: レイヤー切替時のピン消失問題（ユーザー体験に直接影響）
-2. **高優先度**: 音声再生制御問題（機能の基本的な動作）
-3. **中優先度**: メモリリーク問題（長期的な安定性）
+1. **高優先度**: レイヤー切替時のピン消失問題（ユーザー体験に直接影響）✅ [解決済み]
+2. **高優先度**: 音声再生制御問題（機能の基本的な動作）✅ [解決済み]
+3. **中優先度**: メモリリーク問題（長期的な安定性）✅ [AudioPinは解決済み]
 4. **低優先度**: パフォーマンス最適化（現時点では致命的ではない）
 
 ## テスト方針
