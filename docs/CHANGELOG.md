@@ -2,7 +2,9 @@
 
 ## 2025-07-26
 
-### Map機能のパフォーマンス改善（Phase 1）
+### Map機能のパフォーマンス改善（Phase 1 & 2）
+
+#### Phase 1: 即座に修正可能な問題（完了）
 
 1. **レイヤー選択時のチラつき問題の解決**
    - `useLayerSelection.ts`から`getSelectedLayerIds`関数を削除
@@ -16,10 +18,28 @@
    - 地図操作時のパフォーマンスを改善
    - 影響範囲: MapContainer.tsx
 
+#### Phase 2: パフォーマンス最適化（完了）
+
+3. **マーカーのパフォーマンス改善**
+   - `UserLocationMarker.tsx`を新規作成し、マーカーコンポーネントを分離
+   - マーカーサイズを60→40に縮小
+   - React.memoとカスタム比較関数で最適化
+   - 位置・方向・精度が変わった場合のみ再レンダリング
+   - 影響範囲: MapContainer.tsx, UserLocationMarker.tsx（新規）
+
+4. **useMapWithLocationの最適化**
+   - 依存配列を最小化して不要な再実行を防止
+   - `updateMapRegion`関数をuseCallbackでメモ化
+   - `regionRef`を使用してregionオブジェクトの再生成を防止
+   - `centerOnUserLocation`関数もメモ化
+   - 戻り値をuseMemoでメモ化
+   - 影響範囲: useMapWithLocation.ts
+
 #### 技術的詳細
 - Zustandの`useShallow`による最適化を維持
-- React.useCallbackによるメモ化でコンポーネントの再レンダリングを最小化
-- StateManagement.mdのセレクターパターンに準拠した実装
+- React.useCallback、useMemo、React.memoを適切に使用
+- StateManagement.mdのセレクターパターンとメモ化戦略に準拠
+- パフォーマンス改善により、地図操作とマーカー更新のスムーズさが向上
 
 ### 位置情報機能の改善実装
 
