@@ -1,5 +1,4 @@
 import * as Location from 'expo-location';
-import { Alert } from 'react-native';
 import { LocationError, UserLocationData } from '../../domain/entities/Location';
 import { useLocationStore } from '../../application/location-store';
 
@@ -11,6 +10,9 @@ export class LocationStateManager {
   private static instance: LocationStateManager;
   private locationSubscription: Location.LocationSubscription | null = null;
   private headingSubscription: Location.LocationSubscription | null = null;
+  private lastHeadingUpdate: number = 0;
+  private headingThrottleInterval: number = 250; // 250ms のスロットリング
+  private errorCallback: ((error: LocationError) => void) | null = null;
 
   private constructor() {}
 
@@ -37,11 +39,9 @@ export class LocationStateManager {
           message: '位置情報の許可が必要です',
         };
         useLocationStore.getState().handleLocationError(locationError);
-        Alert.alert(
-          '位置情報の許可',
-          '位置情報の許可が必要です。設定から許可してください。',
-          [{ text: 'OK' }]
-        );
+        if (this.errorCallback) {
+          this.errorCallback(locationError);
+        }
         return false;
       }
       
@@ -53,13 +53,14 @@ export class LocationStateManager {
           message: '位置情報サービスが無効です',
         };
         useLocationStore.getState().handleLocationError(locationError);
-        Alert.alert(
-          '位置情報サービス',
-          '位置情報サービスを有効にしてください。',
-          [{ text: 'OK' }]
-        );
+        if (this.errorCallback) {
+          this.errorCallback(locationError);
+        }
         return false;
       }
+      
+      // 権限が正常に取得できた場合、エラーをクリア
+      useLocationStore.getState().setError(null);
       
       return true;
     } catch (error) {
@@ -128,11 +129,18 @@ export class LocationStateManager {
       
       this.headingSubscription = await Location.watchHeadingAsync(
         (headingData) => {
+          const now = Date.now();
+          // スロットリング: 最後の更新から指定時間経過していない場合はスキップ
+          if (now - this.lastHeadingUpdate < this.headingThrottleInterval) {
+            return;
+          }
+          
           // trueHeadingが利用可能な場合は優先、そうでなければmagHeadingを使用
           const heading = headingData.trueHeading !== -1 ? headingData.trueHeading : headingData.magHeading;
           // 有効な値の場合のみ更新
           if (heading !== null && heading !== undefined && !isNaN(heading)) {
             updateHeading(heading);
+            this.lastHeadingUpdate = now;
           }
         }
       );
@@ -234,6 +242,13 @@ export class LocationStateManager {
    */
   cleanup(): void {
     this.stopLocationTracking();
+  }
+
+  /**
+   * エラーコールバックの設定
+   */
+  setErrorCallback(callback: (error: LocationError) => void): void {
+    this.errorCallback = callback;
   }
 }
 

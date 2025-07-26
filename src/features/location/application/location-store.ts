@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { devtools, persist, subscribeWithSelector } from 'zustand/middleware';
 import { immer } from 'zustand/middleware/immer';
+import { shallow } from 'zustand/shallow';
 import { mmkvStorage } from '../../../shared/infra/storage/mmkvStorage';
 import { LocationError, UserLocationData } from '../domain/entities/Location';
 
@@ -227,20 +228,18 @@ export const useStableLocation = () =>
 
 /**
  * 位置情報関連のUI状態を取得
+ * shallow比較を使用して再描画を最小化
  */
-export const useLocationUIState = () => {
-  const isLoading = useLocationStore((state) => state.isLoading);
-  const error = useLocationStore((state) => state.error);
-  const isLocationEnabled = useLocationStore((state) => state.isLocationEnabled);
-  const isTracking = useLocationStore((state) => state.isTracking);
-  
-  return {
-    isLoading,
-    error,
-    isLocationEnabled,
-    isTracking,
-  };
-};
+export const useLocationUIState = () => 
+  useLocationStore(
+    (state) => ({
+      isLoading: state.isLoading,
+      error: state.error,
+      isLocationEnabled: state.isLocationEnabled,
+      isTracking: state.isTracking,
+    }),
+    shallow
+  );
 
 /**
  * 位置情報設定を取得
