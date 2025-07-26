@@ -147,18 +147,24 @@ if (isAuthenticated && user?.emailVerified && !hasCompletedProfile) {
    - エラーハンドリング
    - 無限ループ防止策（lastUserId, isInitializedフラグ）
 
-### Phase 2: API層実装
+### Phase 2: API層実装 ✅ 完了
 
-1. **accountService.ts作成**
+1. **accountService.ts作成** ✅
    - createProfile: プロフィール作成
    - fetchProfile: プロフィール取得
-   - uploadAvatar: アバター画像アップロード
+   - updateProfile: プロフィール更新
    - checkProfileExists: プロフィール存在確認
+   - uploadAvatar: アバター画像アップロード
+   - deleteAvatar: アバター画像削除
+   - Supabaseエラーハンドリング実装
 
-2. **accountStateManager.ts作成**
-   - シングルトンパターン
+2. **accountStateManager.ts作成** ✅
+   - シングルトンパターン実装
    - Auth連携によるプロフィール自動取得
    - エラーコールバック処理
+   - Zustandストアとの自動同期
+   - 無限ループ防止（isInitializing, lastCheckedUserId）
+   - クリーンアップ処理
 
 ### Phase 3: TanStack Query統合
 
@@ -285,7 +291,10 @@ if (isAuthenticated && user?.emailVerified && !hasCompletedProfile) {
   - [x] エンティティ実装
   - [x] Provider実装
   - [x] 無限ループ防止対策
-- [ ] Phase 2: API層実装
+- [x] Phase 2: API層実装
+  - [x] accountService実装（CRUD + アバター管理）
+  - [x] accountStateManager実装（状態同期）
+  - [x] エラーハンドリング統合
 - [ ] Phase 3: TanStack Query統合
 - [ ] Phase 4: UI実装
 - [ ] Phase 5: 遷移フロー実装
@@ -318,3 +327,53 @@ if (isAuthenticated && user?.emailVerified && !hasCompletedProfile) {
 - Auth → Accountの単方向データフロー
 - 循環参照を避ける
 - イベントベースの疎結合な設計
+
+## 次のフェーズ（Phase 3）の詳細
+
+### TanStack Query統合の実装方針
+
+1. **クエリキー設計**
+   - 階層的なキー構造: `['account', 'profile', userId]`
+   - 無効化戦略の明確化
+
+2. **ミューテーション設計**
+   - 楽観的更新による即座のフィードバック
+   - エラー時の自動ロールバック
+   - 成功時のキャッシュ更新
+
+3. **React Nativeとの統合**
+   - AppStateによるバックグラウンド対応
+   - オフライン対応の考慮
+   - リフレッシュ戦略
+
+4. **StateManagement.mdとの整合性**
+   - サーバー状態はTanStack Query
+   - UI状態はZustand
+   - 明確な責務分離の維持
+
+## 実装済みコンポーネントの相関図
+
+```
+┌─────────────────┐
+│ AuthProvider    │
+│ (認証状態管理)   │
+└────────┬────────┘
+         │ 認証完了通知
+         ▼
+┌─────────────────┐
+│ AccountProvider │
+│ (Account状態)   │
+└────────┬────────┘
+         │ 初期化
+         ▼
+┌─────────────────────┐     ┌────────────────┐
+│ accountStateManager │────▶│ accountService │
+│ (状態同期)          │     │ (API通信)      │
+└──────────┬──────────┘     └────────────────┘
+           │ 更新
+           ▼
+┌─────────────────┐
+│ account-store   │
+│ (Zustand)       │
+└─────────────────┘
+```

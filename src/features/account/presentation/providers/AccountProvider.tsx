@@ -1,6 +1,8 @@
 import React, { createContext, PropsWithChildren, useContext, useEffect, useRef } from 'react';
+import { Alert } from 'react-native';
 import { useAuth } from '../../../auth/presentation/hooks/use-auth';
 import { useAccountStore, useHasCompletedProfile } from '../../application/account-store';
+import { accountStateManager, AccountError } from '../../infrastructure/services/accountStateManager';
 
 // Context値の型定義
 interface AccountContextValue {
@@ -24,6 +26,28 @@ export const AccountProvider: React.FC<PropsWithChildren> = ({ children }) => {
   // プロフィールチェック中の状態
   const [isCheckingProfile, setIsCheckingProfile] = React.useState(false);
 
+  // エラーハンドリングの設定
+  useEffect(() => {
+    accountStateManager.setErrorCallback((error: AccountError) => {
+      // エラータイプに応じてユーザーへのフィードバック
+      switch (error.code) {
+        case 'PROFILE_NOT_FOUND':
+          // プロフィール未作成は正常な状態なのでアラート不要
+          break;
+        case 'PROFILE_CREATE_FAILED':
+        case 'PROFILE_UPDATE_FAILED':
+          Alert.alert('エラー', error.message, [{ text: 'OK' }]);
+          break;
+        case 'AVATAR_UPLOAD_FAILED':
+          Alert.alert('アップロードエラー', error.message, [{ text: 'OK' }]);
+          break;
+        case 'NETWORK_ERROR':
+          Alert.alert('通信エラー', 'インターネット接続を確認してください', [{ text: 'OK' }]);
+          break;
+      }
+    });
+  }, []);
+
   // 認証状態の変化を監視してプロフィール状態を確認
   useEffect(() => {
     // 無限ループ防止: 同じユーザーIDで重複実行しない
@@ -36,22 +60,25 @@ export const AccountProvider: React.FC<PropsWithChildren> = ({ children }) => {
       lastUserId.current = user.id;
       
       // 初回のみプロフィール存在確認を行う
-      // 実際のプロフィール取得はProfileCreationScreenで行う
       if (!isInitialized.current) {
         isInitialized.current = true;
         setIsCheckingProfile(true);
         
-        // TODO: 実際のプロフィール存在確認APIを実装後、ここで確認
-        // 現時点では新規登録時は必ずfalseとして扱う
-        setTimeout(() => {
+        // accountStateManagerでプロフィール初期化
+        accountStateManager.initializeProfile(user.id).finally(() => {
           setIsCheckingProfile(false);
-        }, 100);
+        });
       }
     } else {
       // ログアウト時のリセット
       lastUserId.current = null;
       isInitialized.current = false;
       setIsCheckingProfile(false);
+      
+      // accountStateManagerのクリーンアップ
+      if (!isAuthenticated) {
+        accountStateManager.cleanup();
+      }
     }
   }, [isAuthenticated, user?.id, user?.emailVerified]);
 
