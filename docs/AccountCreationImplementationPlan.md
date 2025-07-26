@@ -166,19 +166,34 @@ if (isAuthenticated && user?.emailVerified && !hasCompletedProfile) {
    - 無限ループ防止（isInitializing, lastCheckedUserId）
    - クリーンアップ処理
 
-### Phase 3: TanStack Query統合
+### Phase 3: TanStack Query統合 ✅ 完了
 
-1. **use-account-query.ts作成**
-   - useCreateProfileMutation: 楽観的更新実装
-   - useProfileQuery: プロフィール取得
-   - useUploadAvatarMutation: 画像アップロード
+1. **use-account-query.ts作成** ✅
+   - useProfileQuery: プロフィール取得（Zustand自動同期）
+   - useCheckProfileExistsQuery: 存在確認クエリ
+   - useCreateProfileMutation: プロフィール作成
+   - useUpdateProfileMutation: 楽観的更新実装
+   - useUploadAvatarMutation: 画像アップロード（進捗管理）
+   - useDeleteAvatarMutation: 画像削除
 
-2. **キャッシュ設定**
+2. **use-account.ts作成** ✅
+   - useAccount: 統合インターフェース
+   - useProfileCreationFormHook: フォーム管理フック
+   - useProfileEditHook: 編集フック（将来用）
+   - バリデーション統合
+   - エラーハンドリング統合
+
+3. **キャッシュ設定** ✅
    ```typescript
    queryKey: ['account', 'profile', userId]
    staleTime: 30 * 60 * 1000  // 30分
    gcTime: 60 * 60 * 1000     // 1時間
    ```
+
+4. **StateManagement.mdとの整合性** ✅
+   - サーバー状態: TanStack Query
+   - UI状態: Zustand
+   - 自動同期メカニズム実装
 
 ### Phase 4: UI実装
 
@@ -295,7 +310,11 @@ if (isAuthenticated && user?.emailVerified && !hasCompletedProfile) {
   - [x] accountService実装（CRUD + アバター管理）
   - [x] accountStateManager実装（状態同期）
   - [x] エラーハンドリング統合
-- [ ] Phase 3: TanStack Query統合
+- [x] Phase 3: TanStack Query統合
+  - [x] use-account-query.ts（6つのクエリ/ミューテーション）
+  - [x] use-account.ts（3つの統合フック）
+  - [x] queryClient更新（accountキー追加）
+  - [x] 無限ループ防止（enabled条件、適切な依存配列）
 - [ ] Phase 4: UI実装
 - [ ] Phase 5: 遷移フロー実装
 - [ ] すべての必須項目が入力できる
@@ -370,10 +389,63 @@ if (isAuthenticated && user?.emailVerified && !hasCompletedProfile) {
 │ accountStateManager │────▶│ accountService │
 │ (状態同期)          │     │ (API通信)      │
 └──────────┬──────────┘     └────────────────┘
-           │ 更新
-           ▼
+           │ 更新                    ▲
+           ▼                        │
+┌─────────────────┐                │
+│ account-store   │                │
+│ (Zustand)       │                │
+└────────┬────────┘                │
+         │                         │
+         ▼                         │
+┌──────────────────────┐          │
+│ use-account-query.ts │──────────┘
+│ (TanStack Query)     │
+└─────────┬────────────┘
+          │
+          ▼
 ┌─────────────────┐
-│ account-store   │
-│ (Zustand)       │
+│ use-account.ts  │
+│ (統合フック)     │
 └─────────────────┘
 ```
+
+## Phase 3で実装した統合フックの詳細
+
+### 1. useAccount（メインフック）
+- プロフィール状態の統合管理
+- ローディング・エラー状態の提供
+- refetch機能の提供
+
+### 2. useProfileCreationFormHook（フォーム管理）
+- **バリデーション**: displayName, bio, avatar
+- **アバター管理**: 選択、アップロード、プレビュー
+- **プロフィール作成**: 全体の作成フロー管理
+- **クリーンアップ**: メモリリーク防止
+
+### 3. useProfileEditHook（将来用）
+- プロフィール更新機能
+- 楽観的更新の実装済み
+
+## 次のフェーズ（Phase 4）の準備
+
+### UI実装で必要な考慮事項
+
+1. **画像選択ライブラリ**
+   - react-native-image-pickerの設定
+   - パーミッション処理
+   - 画像圧縮処理
+
+2. **フォームUI設計**
+   - 3ステップフォーム vs 1画面フォーム
+   - プログレス表示
+   - エラー表示方法
+
+3. **ローディング状態**
+   - 画像アップロード進捗
+   - プロフィール作成中の表示
+   - 成功時の遷移アニメーション
+
+4. **アクセシビリティ**
+   - キーボード対応
+   - スクリーンリーダー対応
+   - エラーアナウンス
