@@ -1,59 +1,137 @@
-# SoundZone - 変更履歴
+現状の問題点分析
 
-## 2025年1月26日 - 画像アップロード問題の修正
+  1. StateManagement.mdの原則から逸脱している箇所
 
-### 修正内容
+  ❌ 状態の分類が曖昧
 
-#### 1. expo-image-picker への移行
-**問題**: `react-native-image-picker` がReact Native 0.79.5のTurboModuleアーキテクチャと互換性がなく、`globalThis.__turboModuleProxy is not a function`エラーが発生
+  - profile（サーバー状態）がZustandで管理されている
+  - TanStack Queryとの責務分担が不明確
+  - Blobデータ（avatarLocalBlob）を直接storeに保持
 
-**解決策**:
-- `react-native-image-picker` をアンインストール
-- `expo-image-picker` v16.1.4 をインストール
-- ProfileCreationScreen.tsxを書き換えて新しいAPIに対応
+  ❌ 複雑なアクション数
 
-**変更内容**:
-- 権限リクエスト処理を追加（カメラ/フォトライブラリ）
-- `MediaTypeOptions.Images` → `['images']` に変更（非推奨API対応）
-- `File` コンストラクタを使わず直接 `Blob` を使用（TurboModuleエラー回避）
-- プレビューURLの処理を修正（URIを直接使用）
+  - 個別フィールド更新関数が多すぎる（setDisplayName, setBio, setAvatarLocalDataなど）
+  - updateProfileCreationFormと個別更新関数が併存
 
-#### 2. Supabase Storage RLSポリシー問題の修正
-**問題**: "new row violates row-level security policy" エラーが画像アップロード時に発生
+  ❌ 命名規則の不統一
 
-**原因**: 
-- RLSポリシーが `storage.foldername(name)[1]` でユーザーIDをチェック
-- アップロードパスが `avatars/{userId}/{timestamp}.jpg` となっており、`avatars/` プレフィックスが問題
+  - useAccount vs useProfileCreationFormHook
+  - セレクターフックの命名が混在
 
-**解決策**:
-- アップロードパスから `avatars/` プレフィックスを削除
-- 変更前: `const filePath = 'avatars/${fileName}';`
-- 変更後: 直接 `fileName` を使用（`{userId}/{timestamp}.jpg`）
+  2. CentralizedStateManagement.mdの原則から逸脱
 
-### 技術的詳細
+  ❌ StateManagerパターンの誤用
 
-#### パッケージの変更
-```json
-// 削除
-"react-native-image-picker": "^8.2.1"
+  - accountStateManagerが必要以上に複雑
+  - ProviderとStateManagerの責務が重複
 
-// 追加  
-"expo-image-picker": "~16.1.4"
-```
+  ❌ IAuthContext導入による複雑化
 
-#### app.jsonの権限設定追加
-```json
-"plugins": [
-  [
-    "expo-image-picker",
-    {
-      "photosPermission": "プロフィール画像を選択するために写真ライブラリにアクセスします。",
-      "cameraPermission": "プロフィール画像を撮影するためにカメラを使用します。"
-    }
-  ]
-]
-```
+  - AuthとAccountの分離が中途半端
+  - 依存関係の解決方法が複雑
 
-### 残存問題
-- 画像アップロード後、プロフィール画像のプレビューが更新されない問題が報告されている
-- 画像はSupabase Storageに正常にアップロードされることを確認済み
+  改善計画
+
+  ステップ1: 状態の再分類と責務の明確化
+
+  // 1. サーバー状態 → TanStack Query
+  - profile データ
+  - プロフィール存在確認
+
+  // 2. UI状態 → Zustand（非永続）
+  - フォーム入力値
+  - バリデーションエラー
+  - ローディング状態
+
+  // 3. 永続化状態 → Zustand + MMKV
+  - hasCompletedProfile のみ
+
+  ステップ2: シンプルなAPI設計
+
+  // 統合フック1つに集約
+  export const useAccountProfile = () => {
+    // TanStack Queryでプロフィール管理
+    const { data: profile, isLoading } = useProfileQuery();
+
+    // フォーム状態のみZustandで管理
+    const formState = useProfileCreationFormState();
+    const formActions = useProfileCreationFormActions();
+
+    return {
+      profile,
+      isLoading,
+      form: formState,
+      actions: formActions
+    };
+  };
+
+  ステップ3: 画像管理の改善
+
+  // Blobは一時的にRefで管理
+  const imageRef = useRef<{uri: string, blob: Blob}>();
+
+  // storeには画像URIのみ保存
+
+  段階的な実装手順
+
+⏺ Update Todos
+  ⎿  ☒ Account機能の現状確認                           
+     ☒ StateManagement.mdの原則に基づく問題点の洗い出し
+     ☒ 改善計画の策定
+     ☒ 段階的な実装手順の作成
+
+✻ Thinking…
+
+  段階的な実装手順を詳しく書きます。
+
+⏺ フェーズ1: 状態管理の整理（優先度：高）
+
+  1. account-store.tsの簡素化
+    - プロフィールデータ（profile）を削除
+    - アクション数を削減（個別更新関数を統合）
+    - UI状態のみに集中
+  2. use-account-query.tsの強化
+    - プロフィール取得をTanStack Queryに完全移行
+    - useProfileQueryとuseCheckProfileExistsQueryに統合
+  3. 画像管理の改善
+    - Blobデータをstoreから削除
+    - 一時的なRefまたはローカル状態で管理
+
+  フェーズ2: インターフェースの簡素化（優先度：中）
+
+  1. IAuthContextの削除
+    - AccountProviderのprops経由での認証情報受け渡しを廃止
+    - 必要最小限の情報のみをuseAuthから取得
+  2. accountStateManagerの削減
+    - 不要な初期化ロジックを削除
+    - TanStack Queryのキャッシュ管理に委譲
+
+  フェーズ3: 命名規則とAPI統一（優先度：低）
+
+  1. フック命名の統一
+    - useAccountProfile - メイン統合フック
+    - useProfileCreationForm - フォーム専用フック
+    - useProfileQuery - Query専用フック
+  2. セレクターの整理
+    - 必要最小限のセレクターのみ公開
+    - shallow比較の適切な使用
+
+  実装による期待効果
+
+  1. コードの簡素化
+    - ファイル数の削減
+    - 理解しやすいデータフロー
+    - メンテナンス性の向上
+  2. パフォーマンス改善
+    - 不要な再レンダリングの削減
+    - メモリ使用量の最適化（Blob管理）
+  3. 原則への準拠
+    - StateManagement.mdの分類に従った実装
+    - CentralizedStateManagement.mdのパターンに準拠
+
+  注意事項
+
+  - 既存の機能を壊さないよう、段階的に実装
+  - 各フェーズ完了後にテストを実施
+  - 不要なファイルは最後に削除
+
