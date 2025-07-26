@@ -1,30 +1,37 @@
 import React, { createContext, PropsWithChildren, useContext, useEffect, useRef } from 'react';
 import { Alert } from 'react-native';
-import { useAuth } from '../../../auth/presentation/hooks/use-auth';
 import { useAccountStore, useHasCompletedProfile } from '../../application/account-store';
 import { accountStateManager, AccountError } from '../../infrastructure/services/accountStateManager';
+import { IAuthUser } from '../../../../shared/domain/interfaces/IAuthContext';
 
 // Context値の型定義
 interface AccountContextValue {
   hasCompletedProfile: boolean;
   isCheckingProfile: boolean;
+  authUser: IAuthUser | null;
 }
 
 // Context作成
 const AccountContext = createContext<AccountContextValue | undefined>(undefined);
 
+// Provider Props
+interface AccountProviderProps extends PropsWithChildren {
+  authUser: IAuthUser | null;
+}
+
 // Provider実装
-export const AccountProvider: React.FC<PropsWithChildren> = ({ children }) => {
-  const { isAuthenticated, user } = useAuth();
+export const AccountProvider: React.FC<AccountProviderProps> = ({ children, authUser }) => {
   const hasCompletedProfile = useHasCompletedProfile();
   const setHasCompletedProfile = useAccountStore((state) => state.setHasCompletedProfile);
   
   // 無限ループ防止用のフラグ
   const isInitialized = useRef(false);
   const lastUserId = useRef<string | null>(null);
+  const initPromise = useRef<Promise<void> | null>(null);
   
   // プロフィールチェック中の状態
   const [isCheckingProfile, setIsCheckingProfile] = React.useState(false);
+  
 
   // エラーハンドリングの設定
   useEffect(() => {
@@ -50,64 +57,54 @@ export const AccountProvider: React.FC<PropsWithChildren> = ({ children }) => {
 
   // 認証状態の変化を監視してプロフィール状態を確認
   useEffect(() => {
-    // 無限ループ防止: 同じユーザーIDで重複実行しない
-    if (lastUserId.current === user?.id) {
-      return;
-    }
 
-    // 認証済みでメール確認済みの場合
-    if (isAuthenticated && user?.emailVerified) {
-      lastUserId.current = user.id;
-      
-      // 初回のみプロフィール存在確認を行う
-      if (!isInitialized.current) {
-        isInitialized.current = true;
-        setIsCheckingProfile(true);
-        
-        // accountStateManagerでプロフィール初期化
-        accountStateManager.initializeProfile(user.id).finally(() => {
-          setIsCheckingProfile(false);
-        });
+    // authUserが存在する場合（認証済みでメール確認済み）
+    if (authUser && authUser.emailVerified) {
+      // 無限ループ防止: 同じユーザーIDで重複実行しない
+      if (lastUserId.current === authUser.id && isInitialized.current) {
+        return;
       }
-    } else {
+
+      // 初期化中の場合は待機
+      if (initPromise.current) {
+        return;
+      }
+
+      lastUserId.current = authUser.id;
+      setIsCheckingProfile(true);
+      
+      // accountStateManagerでプロフィール初期化
+      initPromise.current = accountStateManager.initializeProfile(authUser.id)
+        .finally(() => {
+          setIsCheckingProfile(false);
+          isInitialized.current = true;
+          initPromise.current = null;
+        });
+    } else if (!authUser && lastUserId.current) {
       // ログアウト時のリセット
       lastUserId.current = null;
       isInitialized.current = false;
+      initPromise.current = null;
       setIsCheckingProfile(false);
       
       // accountStateManagerのクリーンアップ
-      if (!isAuthenticated) {
-        accountStateManager.cleanup();
-      }
+      accountStateManager.cleanup();
     }
-  }, [isAuthenticated, user?.id, user?.emailVerified]);
+  }, [authUser]);
 
-  // Auth機能からのログアウトイベントを監視
+  // コンポーネントのアンマウント時のクリーンアップ
   useEffect(() => {
-    const handleLogout = () => {
-      // AccountストアをリセットしてAuth連携
-      useAccountStore.getState().reset();
-    };
-
-    // Authストアの変更を監視（CentralizedStateManagement.mdのパターン）
-    const unsubscribe = useAccountStore.subscribe(
-      (state) => state.profile,
-      (profile) => {
-        if (!profile && lastUserId.current) {
-          // プロフィールがnullになった = ログアウト
-          handleLogout();
-        }
-      }
-    );
-
     return () => {
-      unsubscribe();
+      if (initPromise.current) {
+        initPromise.current = null;
+      }
     };
   }, []);
 
   const value: AccountContextValue = {
     hasCompletedProfile,
     isCheckingProfile,
+    authUser,
   };
 
   return (

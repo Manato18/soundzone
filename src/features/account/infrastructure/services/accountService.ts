@@ -5,6 +5,7 @@ import { StorageError } from '@supabase/storage-js';
 // Infrastructure Layer: Supabase APIとの通信
 export class AccountService {
   // プロフィール作成
+  // 注: 認証チェックは呼び出し側の責任で行う
   async createProfile(params: {
     userId: string;
     email: string;
@@ -28,13 +29,11 @@ export class AccountService {
         .single();
 
       if (error) {
-        console.error('Failed to create profile:', error);
         throw new Error(error.message || 'プロフィールの作成に失敗しました');
       }
 
       return this.mapToQueryProfile(data);
     } catch (error) {
-      console.error('createProfile error:', error);
       throw error;
     }
   }
@@ -53,13 +52,11 @@ export class AccountService {
           // レコードが見つからない場合
           return null;
         }
-        console.error('Failed to fetch profile:', error);
         throw new Error(error.message || 'プロフィールの取得に失敗しました');
       }
 
       return data ? this.mapToQueryProfile(data) : null;
     } catch (error) {
-      console.error('fetchProfile error:', error);
       throw error;
     }
   }
@@ -83,13 +80,11 @@ export class AccountService {
         .single();
 
       if (error) {
-        console.error('Failed to update profile:', error);
         throw new Error(error.message || 'プロフィールの更新に失敗しました');
       }
 
       return this.mapToQueryProfile(data);
     } catch (error) {
-      console.error('updateProfile error:', error);
       throw error;
     }
   }
@@ -108,13 +103,11 @@ export class AccountService {
           // レコードが見つからない場合
           return false;
         }
-        console.error('Failed to check profile exists:', error);
         throw new Error(error.message || 'プロフィールの確認に失敗しました');
       }
 
       return !!data;
     } catch (error) {
-      console.error('checkProfileExists error:', error);
       throw error;
     }
   }
@@ -130,18 +123,16 @@ export class AccountService {
         ? params.file.name.split('.').pop() 
         : 'jpg';
       const fileName = `${params.userId}/${Date.now()}.${fileExt}`;
-      const filePath = `avatars/${fileName}`;
 
       // アップロード実行
       const { data, error } = await supabase.storage
         .from('avatars')
-        .upload(filePath, params.file, {
+        .upload(fileName, params.file, {
           cacheControl: '3600',
           upsert: false,
         });
 
       if (error) {
-        console.error('Failed to upload avatar:', error);
         if ((error as StorageError).statusCode === 413) {
           throw new Error('画像サイズが大きすぎます。5MB以下の画像を選択してください');
         }
@@ -155,7 +146,6 @@ export class AccountService {
 
       return publicUrlData.publicUrl;
     } catch (error) {
-      console.error('uploadAvatar error:', error);
       throw error;
     }
   }
@@ -175,11 +165,9 @@ export class AccountService {
         .remove([filePath]);
 
       if (error) {
-        console.error('Failed to delete avatar:', error);
         // 削除エラーは無視（既に削除されている可能性があるため）
       }
     } catch (error) {
-      console.error('deleteAvatar error:', error);
       // 削除エラーは無視
     }
   }

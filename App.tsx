@@ -11,7 +11,6 @@ import { AppInitializer } from './src/shared/infra/initialization/appInitializer
 import { AuthProvider } from './src/features/auth/presentation/providers';
 import { LayersProvider } from './src/features/layers/presentation/providers/LayersProvider';
 import { LocationProvider } from './src/features/location/presentation/providers/LocationProvider';
-import { AccountProvider } from './src/features/account/presentation/providers/AccountProvider';
 import { ToastProvider } from './src/shared/components/Toast';
 
 export default function App() {
@@ -43,14 +42,12 @@ export default function App() {
     <QueryClientProvider client={queryClient}>
       <ToastProvider>
         <AuthProvider>
-          <AccountProvider>
-            <LocationProvider>
-              <LayersProvider>
-                <RootNavigator />
-                <StatusBar style="auto" />
-              </LayersProvider>
-            </LocationProvider>
-          </AccountProvider>
+          <LocationProvider>
+            <LayersProvider>
+              <RootNavigator />
+              <StatusBar style="auto" />
+            </LayersProvider>
+          </LocationProvider>
         </AuthProvider>
       </ToastProvider>
     </QueryClientProvider>

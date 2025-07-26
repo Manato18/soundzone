@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { devtools, persist, subscribeWithSelector } from 'zustand/middleware';
 import { immer } from 'zustand/middleware/immer';
+import { shallow } from 'zustand/shallow';
 import { mmkvStorage } from '../../../shared/infra/storage/mmkvStorage';
 import { QueryProfile } from '../domain/entities/Profile';
 
@@ -15,6 +16,8 @@ export interface AccountState {
       displayName: string;
       bio: string;
       avatarPreviewUrl?: string;  // アップロード前のプレビュー
+      avatarLocalUri?: string;    // ローカルに選択した画像のURI
+      avatarLocalBlob?: Blob;     // アップロード用のBlobデータ
       isSubmitting: boolean;
       errors: {
         displayName?: string;
@@ -44,6 +47,9 @@ export interface AccountActions {
   
   // プロフィール作成フォーム
   updateProfileCreationForm: (updates: Partial<AccountState['ui']['profileCreationForm']>) => void;
+  setDisplayName: (displayName: string) => void;
+  setBio: (bio: string) => void;
+  setAvatarLocalData: (uri: string, blob: Blob) => void;
   setProfileCreationError: (field: keyof AccountState['ui']['profileCreationForm']['errors'], error?: string) => void;
   clearProfileCreationErrors: () => void;
   setProfileCreationSubmitting: (isSubmitting: boolean) => void;
@@ -72,6 +78,8 @@ const initialState: AccountState = {
       displayName: '',
       bio: '',
       avatarPreviewUrl: undefined,
+      avatarLocalUri: undefined,
+      avatarLocalBlob: undefined,
       isSubmitting: false,
       errors: {},
     },
@@ -110,12 +118,47 @@ export const useAccountStore = create<AccountState & AccountActions>()(
           // プロフィール作成フォーム
           updateProfileCreationForm: (updates) =>
             set((state) => {
+              // 更新を適用
               Object.assign(state.ui.profileCreationForm, updates);
-              // 入力時にエラーをクリア
-              if ('displayName' in updates || 'bio' in updates) {
-                state.ui.profileCreationForm.errors = {};
+              // 個別のフィールドのエラーのみクリア
+              if ('displayName' in updates && state.ui.profileCreationForm.errors.displayName) {
+                delete state.ui.profileCreationForm.errors.displayName;
+              }
+              if ('bio' in updates && state.ui.profileCreationForm.errors.bio) {
+                delete state.ui.profileCreationForm.errors.bio;
+              }
+              if (('avatarLocalUri' in updates || 'avatarLocalBlob' in updates) && state.ui.profileCreationForm.errors.avatar) {
+                delete state.ui.profileCreationForm.errors.avatar;
               }
             }),
+
+          // 個別フィールド更新（再レンダリング最適化）
+          setDisplayName: (displayName) => {
+            set((state) => {
+              state.ui.profileCreationForm.displayName = displayName;
+              if (state.ui.profileCreationForm.errors.displayName) {
+                delete state.ui.profileCreationForm.errors.displayName;
+              }
+            });
+          },
+
+          setBio: (bio) =>
+            set((state) => {
+              state.ui.profileCreationForm.bio = bio;
+              if (state.ui.profileCreationForm.errors.bio) {
+                delete state.ui.profileCreationForm.errors.bio;
+              }
+            }),
+
+          setAvatarLocalData: (uri, blob) => {
+            set((state) => {
+              state.ui.profileCreationForm.avatarLocalUri = uri;
+              state.ui.profileCreationForm.avatarLocalBlob = blob;
+              if (state.ui.profileCreationForm.errors.avatar) {
+                delete state.ui.profileCreationForm.errors.avatar;
+              }
+            });
+          },
 
           setProfileCreationError: (field, error) =>
             set((state) => {
@@ -210,6 +253,11 @@ export const useAccountStore = create<AccountState & AccountActions>()(
         partialize: (state) => ({
           settings: state.settings,
         }),
+        // 永続化されていない状態を初期値にマージしない
+        merge: (persistedState, currentState) => ({
+          ...currentState,
+          ...persistedState,
+        }),
       }
     ),
     {
@@ -222,9 +270,16 @@ export const useAccountStore = create<AccountState & AccountActions>()(
 // セレクター（再描画最適化）
 export const useAccountProfile = () => useAccountStore((state) => state.profile);
 export const useHasCompletedProfile = () => useAccountStore((state) => state.settings.hasCompletedProfile);
-export const useProfileCreationForm = () => useAccountStore((state) => state.ui.profileCreationForm);
-export const useAvatarUpload = () => useAccountStore((state) => state.ui.avatarUpload);
-export const useAccountSettings = () => useAccountStore((state) => state.settings);
+export const useProfileCreationForm = () => useAccountStore((state) => state.ui.profileCreationForm, shallow);
+export const useAvatarUpload = () => useAccountStore((state) => state.ui.avatarUpload, shallow);
+export const useAccountSettings = () => useAccountStore((state) => state.settings, shallow);
+
+// 個別フィールドセレクター（さらなる最適化）
+export const useDisplayName = () => useAccountStore((state) => state.ui.profileCreationForm.displayName);
+export const useBio = () => useAccountStore((state) => state.ui.profileCreationForm.bio);
+export const useAvatarLocalUri = () => useAccountStore((state) => state.ui.profileCreationForm.avatarLocalUri);
+export const useProfileCreationErrors = () => useAccountStore((state) => state.ui.profileCreationForm.errors, shallow);
+export const useIsSubmitting = () => useAccountStore((state) => state.ui.profileCreationForm.isSubmitting);
 
 // アクションセレクター
 export const useAccountActions = () => {
@@ -232,6 +287,9 @@ export const useAccountActions = () => {
   return {
     setProfile: store.setProfile,
     updateProfileCreationForm: store.updateProfileCreationForm,
+    setDisplayName: store.setDisplayName,
+    setBio: store.setBio,
+    setAvatarLocalData: store.setAvatarLocalData,
     setProfileCreationError: store.setProfileCreationError,
     clearProfileCreationErrors: store.clearProfileCreationErrors,
     setProfileCreationSubmitting: store.setProfileCreationSubmitting,

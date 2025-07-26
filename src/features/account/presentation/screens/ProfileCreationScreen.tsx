@@ -1,4 +1,4 @@
-import React, { useEffect, useLayoutEffect } from 'react';
+import React, { useEffect, useLayoutEffect, memo, useRef } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -11,26 +11,36 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
-import { launchImageLibrary, launchCamera, ImagePickerResponse, ImageLibraryOptions, CameraOptions } from 'react-native-image-picker';
-import { useAuth } from '../../../auth/presentation/hooks/use-auth';
+import * as ImagePicker from 'expo-image-picker';
 import { useProfileCreationFormHook } from '../hooks/use-account';
 import { showToast } from '../../../../shared/components/Toast';
 import { uriToBlob } from '../../../../shared/utils/imageCompressor';
 
-export default function ProfileCreationScreen() {
+function ProfileCreationScreen() {
+  // コンポーネントのマウント/アンマウントをログ
+  React.useEffect(() => {
+    console.log('🟢 [ProfileCreationScreen] MOUNTED');
+    return () => {
+      console.log('🔴 [ProfileCreationScreen] UNMOUNTED');
+    };
+  }, []);
+  
   const navigation = useNavigation();
-  const { user } = useAuth();
   const {
     form,
     avatarUpload,
     validateDisplayName,
     validateBio,
     updateForm,
+    setDisplayName,
+    setBio,
+    setAvatarLocalData,
     createProfile,
-    selectAndUploadAvatar,
+    checkAvatarSize,
     cleanup,
     isCreating,
     isUploading,
@@ -43,69 +53,108 @@ export default function ProfileCreationScreen() {
     });
   }, [navigation]);
 
-  // クリーンアップ
-  useEffect(() => {
-    return () => {
-      cleanup();
-    };
-  }, [cleanup]);
+  // クリーンアップはプロフィール作成完了時のみ実行
+  // アンマウント時には実行しない（再マウントで状態が消えるため）
 
-  // 画像選択オプション
-  const imageOptions: ImageLibraryOptions & CameraOptions = {
-    mediaType: 'photo',
-    includeBase64: false,
-    maxHeight: 1024,
-    maxWidth: 1024,
-    quality: 0.8,
+  // 権限リクエスト
+  const requestPermission = async (permissionType: 'camera' | 'mediaLibrary') => {
+    if (permissionType === 'camera') {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert(
+          'カメラへのアクセス',
+          'プロフィール画像を撮影するにはカメラへのアクセスを許可してください',
+          [{ text: 'OK' }]
+        );
+        return false;
+      }
+    } else {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert(
+          '写真へのアクセス',
+          'プロフィール画像を選択するには写真へのアクセスを許可してください',
+          [{ text: 'OK' }]
+        );
+        return false;
+      }
+    }
+    return true;
   };
 
   // カメラから撮影
-  const handleTakePhoto = () => {
-    launchCamera(imageOptions, handleImageResponse);
+  const handleTakePhoto = async () => {
+    const hasPermission = await requestPermission('camera');
+    if (!hasPermission) return;
+
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    });
+
+    if (!result.canceled) {
+      await handleImageSelected(result.assets[0]);
+    }
   };
 
   // ギャラリーから選択
-  const handleSelectFromGallery = () => {
-    launchImageLibrary(imageOptions, handleImageResponse);
+  const handleSelectFromGallery = async () => {
+    const hasPermission = await requestPermission('mediaLibrary');
+    if (!hasPermission) return;
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    });
+
+    if (!result.canceled) {
+      await handleImageSelected(result.assets[0]);
+    }
   };
 
   // 画像選択後の処理
-  const handleImageResponse = async (response: ImagePickerResponse) => {
-    if (response.didCancel || response.errorCode) {
-      if (response.errorCode) {
-        showToast('画像の選択に失敗しました', 'error');
-      }
-      return;
-    }
-
-    const asset = response.assets?.[0];
-    if (!asset || !asset.uri) {
-      showToast('画像の選択に失敗しました', 'error');
-      return;
-    }
-
-    // ファイルサイズチェック（5MB）
-    if (asset.fileSize && asset.fileSize > 5 * 1024 * 1024) {
-      showToast('画像サイズは5MB以下にしてください', 'error');
-      return;
-    }
-
+  const handleImageSelected = async (asset: ImagePicker.ImagePickerAsset) => {
     try {
-      // Blobに変換してアップロード
+      // Blobに変換して保存
       const blob = await uriToBlob(asset.uri);
-      const file = new File([blob], asset.fileName || 'avatar.jpg', {
-        type: asset.type || 'image/jpeg',
-      });
-
-      const result = await selectAndUploadAvatar(file);
-      if (result.success) {
-        showToast('画像をアップロードしました', 'success');
-      } else {
-        showToast(result.error || 'アップロードに失敗しました', 'error');
+      
+      // ファイルサイズチェック
+      if (!checkAvatarSize(blob.size)) {
+        showToast('画像サイズは5MB以下にしてください', 'error');
+        return;
       }
+      
+      // ファイル名を生成（拡張子を維持）
+      const extension = asset.uri.split('.').pop()?.toLowerCase() || 'jpg';
+      const fileName = `avatar_${Date.now()}.${extension}`;
+      
+      // Blobにnameプロパティとtypeプロパティを追加
+      Object.defineProperty(blob, 'name', {
+        value: fileName,
+        writable: false,
+        enumerable: true,
+        configurable: true
+      });
+      
+      if (!blob.type) {
+        Object.defineProperty(blob, 'type', {
+          value: asset.type || `image/${extension}`,
+          writable: false,
+          enumerable: true,
+          configurable: true
+        });
+      }
+      
+      // ローカルプレビューとBlobを設定
+      setAvatarLocalData(asset.uri, blob);
+      showToast('画像を選択しました', 'success');
     } catch (error) {
-      console.error('Image upload error:', error);
-      showToast('画像のアップロードに失敗しました', 'error');
+      console.error('Image selection error:', error);
+      showToast('画像の選択に失敗しました', 'error');
     }
   };
 
@@ -115,14 +164,16 @@ export default function ProfileCreationScreen() {
     
     if (result.success) {
       showToast('プロフィールを作成しました', 'success');
+      cleanup(); // 成功時のみクリーンアップ
       // 自動的にホーム画面へ遷移（RootNavigatorが判定）
     } else {
       showToast(result.error || 'プロフィールの作成に失敗しました', 'error');
     }
   };
 
-  // アバター画像の表示URL
-  const avatarDisplayUrl = avatarUpload.uploadedUrl || form.avatarPreviewUrl;
+  // アバター画像の表示URL（ローカルURIを優先表示）
+  const avatarDisplayUrl = form.avatarLocalUri || form.avatarPreviewUrl || avatarUpload.uploadedUrl;
+  
 
   // フォームが有効かどうか
   const isFormValid = 
@@ -219,7 +270,7 @@ export default function ProfileCreationScreen() {
               placeholder="表示名を入力"
               value={form.displayName}
               onChangeText={(text) => {
-                updateForm({ displayName: text });
+                setDisplayName(text);
                 validateDisplayName(text);
               }}
               maxLength={32}
@@ -245,7 +296,7 @@ export default function ProfileCreationScreen() {
               placeholder="自己紹介を入力（任意）"
               value={form.bio}
               onChangeText={(text) => {
-                updateForm({ bio: text });
+                setBio(text);
                 validateBio(text);
               }}
               maxLength={300}
@@ -278,8 +329,13 @@ export default function ProfileCreationScreen() {
             onPress={handleCreateProfile}
             disabled={!isFormValid}
           >
-            {isCreating ? (
-              <ActivityIndicator color="white" />
+            {isCreating || isUploading ? (
+              <View style={styles.creatingContainer}>
+                <ActivityIndicator color="white" />
+                <Text style={styles.creatingText}>
+                  {isUploading ? '画像をアップロード中...' : '作成中...'}
+                </Text>
+              </View>
             ) : (
               <Text style={styles.createButtonText}>プロフィールを作成</Text>
             )}
@@ -462,6 +518,16 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
   },
+  creatingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  creatingText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '500',
+  },
   note: {
     fontSize: 12,
     color: '#999',
@@ -469,3 +535,5 @@ const styles = StyleSheet.create({
     marginTop: 16,
   },
 });
+
+export default memo(ProfileCreationScreen);

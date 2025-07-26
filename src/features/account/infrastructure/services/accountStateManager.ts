@@ -43,7 +43,6 @@ class AccountStateManager {
   async initializeProfile(userId: string): Promise<void> {
     // 無限ループ防止: 同じユーザーIDで重複実行しない
     if (this.isInitializing || this.lastCheckedUserId === userId) {
-      console.log('Profile initialization already in progress or completed for user:', userId);
       return;
     }
 
@@ -66,7 +65,6 @@ class AccountStateManager {
         useAccountStore.getState().setHasCompletedProfile(false);
       }
     } catch (error) {
-      console.error('Failed to initialize profile:', error);
       this.notifyError({
         code: 'NETWORK_ERROR',
         message: 'プロフィールの取得に失敗しました',
@@ -94,7 +92,6 @@ class AccountStateManager {
       
       return profile;
     } catch (error) {
-      console.error('Failed to create profile:', error);
       this.notifyError({
         code: 'PROFILE_CREATE_FAILED',
         message: error instanceof Error ? error.message : 'プロフィールの作成に失敗しました',
@@ -116,7 +113,6 @@ class AccountStateManager {
       
       return profile;
     } catch (error) {
-      console.error('Failed to update profile:', error);
       this.notifyError({
         code: 'PROFILE_UPDATE_FAILED',
         message: error instanceof Error ? error.message : 'プロフィールの更新に失敗しました',
@@ -150,7 +146,6 @@ class AccountStateManager {
       
       return avatarUrl;
     } catch (error) {
-      console.error('Failed to upload avatar:', error);
       useAccountStore.getState().setAvatarUploadError(
         error instanceof Error ? error.message : 'アバター画像のアップロードに失敗しました'
       );
@@ -169,7 +164,6 @@ class AccountStateManager {
     try {
       await accountService.deleteAvatar(avatarUrl);
     } catch (error) {
-      console.error('Failed to delete avatar:', error);
       // 削除エラーは通知しない（ユーザーに影響がないため）
     }
   }
@@ -178,7 +172,11 @@ class AccountStateManager {
   cleanup(): void {
     this.lastCheckedUserId = null;
     this.isInitializing = false;
-    useAccountStore.getState().reset();
+    // フォーム状態は保持し、プロフィールとhasCompletedProfileのみリセット
+    const store = useAccountStore.getState();
+    store.setProfile(null);
+    store.setHasCompletedProfile(false);
+    // フォーム状態はリセットしない（ユーザーが入力中の可能性があるため）
   }
 }
 

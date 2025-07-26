@@ -122,6 +122,7 @@ EncryptionKeyManager (キー生成・管理) → Expo Secure Store (キー保存
 | **Expo Dev Client** | `^5.2.2` | 開発クライアント | カスタムネイティブコード対応 |
 | **Expo Secure Store** | `~14.2.3` | セキュアストレージ | EncryptionKeyManagerで暗号化キー管理 |
 | **Expo Crypto** | `~14.1.5` | 暗号化・ハッシュ化 | キー生成・フォールバック処理 |
+| **Expo Image Picker** | `~16.1.4` | 画像選択・カメラ撮影 | プロフィール画像選択・撮影機能、権限設定済み |
 
 ## 11. その他・ユーティリティ
 
@@ -160,12 +161,14 @@ EncryptionKeyManager (キー生成・管理) → Expo Secure Store (キー保存
 - **Bundle ID**: com.anonymous.soundzone
 - **UIBackgroundModes**: audio（バックグラウンド音声）
 - **マイク権限**: 日本語説明文設定（NSMicrophoneUsageDescription）
+- **カメラ権限**: プロフィール画像撮影用（NSCameraUsageDescription）
+- **フォトライブラリ権限**: プロフィール画像選択用（NSPhotoLibraryUsageDescription）
 
 **Android 設定**
 - **Package**: com.anonymous.soundzone
 - **Google Maps API**: 設定済み
 - **Edge to Edge**: 有効化
-- **権限**: RECORD_AUDIO, ACCESS_FINE_LOCATION, ACCESS_COARSE_LOCATION
+- **権限**: RECORD_AUDIO, ACCESS_FINE_LOCATION, ACCESS_COARSE_LOCATION, CAMERA, READ_EXTERNAL_STORAGE, WRITE_EXTERNAL_STORAGE
 
 ## 14. 環境変数要件
 
@@ -214,6 +217,7 @@ npx expo start
 - **Expo Secure Store**: iOS Keychain、Android Keystoreへの適切なアクセス権限確認
 - **Expo Crypto**: ランダムバイト生成、フォールバック処理の動作確認
 - **Expo Audio**: マイク権限設定、録音権限確認
+- **Expo Image Picker**: カメラ・フォトライブラリ権限設定、プラグイン設定確認
 - **Track Player**: ネイティブ設定、Audio Session 設定
 - **Maps**: API キー設定、権限設定
 - **Reanimated**: Babel 設定、ネイティブランナー
@@ -240,6 +244,7 @@ cd ios && rm -rf Pods Podfile.lock && cd ..
 - Expo SDK 更新前に Breaking Changes 確認
 - ネイティブ依存関係は iOS/Android 両方でテスト
 - 音声機能は実機でのテストが必須
+- 画像機能（カメラ・ギャラリー）は実機でのテストが必須
 - セキュリティライブラリ更新時は暗号化キーの互換性確認
 
 ---
