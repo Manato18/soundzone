@@ -237,8 +237,7 @@ export const useLocationUIState = () =>
       error: state.error,
       isLocationEnabled: state.isLocationEnabled,
       isTracking: state.isTracking,
-    }),
-    shallow
+    })
   );
 
 /**

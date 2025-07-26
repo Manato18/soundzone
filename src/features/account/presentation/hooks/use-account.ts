@@ -1,208 +1,204 @@
-import { useCallback } from 'react';
-import { useAccountContext } from '../providers/AccountProvider';
-import {
-  useAccountStore,
-  useAccountProfile,
-  useHasCompletedProfile,
-  useProfileCreationForm,
-  useAvatarUpload,
-  useAccountActions,
-} from '../../application/account-store';
-import {
-  useProfileQuery,
+import { useCallback, useRef } from 'react';
+import { 
+  useProfileQuery, 
   useCheckProfileExistsQuery,
   useCreateProfileMutation,
-  useUpdateProfileMutation,
-  useUploadAvatarMutation,
-  useDeleteAvatarMutation,
+  useUploadAvatarMutation 
 } from './use-account-query';
+import {
+  useProfileCreationForm as useProfileCreationFormSelector,
+  useAvatarUploadState,
+  useHasCompletedProfile,
+  useAccountFormStore,
+} from '../../application/account-store';
+import { useAuth } from '../../../auth/presentation/hooks/use-auth';
 import { Profile } from '../../domain/entities/Profile';
 
-// 統合フック - Account機能の中心的なインターフェース
-export const useAccount = () => {
-  const profile = useAccountProfile();
-  const hasCompletedProfile = useHasCompletedProfile();
+// 画像データの一時管理用の型
+interface ImageData {
+  uri: string;
+  blob: Blob;
+}
 
+// メイン統合フック（シンプルなAPI）
+export const useAccountProfile = () => {
+  const { user } = useAuth();
+  const userId = user?.id;
+  
+  // TanStack Queryでサーバー状態を管理
+  const { data: profile, isLoading: isLoadingProfile } = useProfileQuery(userId);
+  const { data: profileExists, isLoading: isCheckingExists } = useCheckProfileExistsQuery(userId);
+  
+  // Zustandでフォーム状態を管理
+  const hasCompletedProfile = useHasCompletedProfile();
+  
   return {
-    // 状態
+    // サーバー状態
     profile,
+    profileExists: profileExists ?? false,
     hasCompletedProfile,
     
-    // AccountProviderから取得
-    isCheckingProfile: false, // AccountProviderで管理
+    // ローディング状態
+    isLoading: isLoadingProfile || isCheckingExists,
+    
+    // ユーザー情報
+    userId,
+    userEmail: user?.email,
+    emailVerified: user?.emailVerified ?? false,
   };
 };
 
-// プロフィール作成フォームフック
-export const useProfileCreationFormHook = () => {
-  const { authUser } = useAccountContext();
-  const form = useProfileCreationForm();
-  const avatarUpload = useAvatarUpload();
-  const actions = useAccountActions();
+// プロフィール作成フォーム専用フック
+export const useProfileCreationForm = () => {
+  const { user } = useAuth();
+  const form = useProfileCreationFormSelector();
+  const uploadState = useAvatarUploadState();
+  
+  // アクションを個別に取得して参照の安定性を保つ
+  const updateForm = useAccountFormStore((state) => state.updateForm);
+  const setFormError = useAccountFormStore((state) => state.setFormError);
+  const clearFormErrors = useAccountFormStore((state) => state.clearFormErrors);
+  const resetForm = useAccountFormStore((state) => state.resetForm);
+  const setUploadState = useAccountFormStore((state) => state.setUploadState);
+  const setHasCompletedProfile = useAccountFormStore((state) => state.setHasCompletedProfile);
   
   const createProfileMutation = useCreateProfileMutation();
   const uploadAvatarMutation = useUploadAvatarMutation();
-  const deleteAvatarMutation = useDeleteAvatarMutation();
-
-  // 表示名のバリデーション
-  const validateDisplayName = useCallback((name: string) => {
+  
+  // 画像データの一時保存（Blobはstoreに入れない）
+  const imageDataRef = useRef<ImageData | null>(null);
+  
+  // バリデーション
+  const validateDisplayName = useCallback((name: string): boolean => {
     const error = Profile.validateDisplayName(name);
-    actions.setProfileCreationError('displayName', error);
+    setFormError('displayName', error);
     return !error;
-  }, [actions]);
-
-  // 自己紹介のバリデーション
-  const validateBio = useCallback((bio: string) => {
+  }, [setFormError]);
+  
+  const validateBio = useCallback((bio: string): boolean => {
     const error = Profile.validateBio(bio);
-    actions.setProfileCreationError('bio', error);
+    setFormError('bio', error);
     return !error;
-  }, [actions]);
-
-  // アバター画像のバリデーション
-  const validateAvatar = useCallback(() => {
-    if (!avatarUpload.uploadedUrl && !form.avatarPreviewUrl && !form.avatarLocalUri) {
-      actions.setProfileCreationError('avatar', 'アバター画像を選択してください');
+  }, [setFormError]);
+  
+  const validateAvatar = useCallback((): boolean => {
+    if (!form.avatarUri && !uploadState.uploadedUrl) {
+      setFormError('avatar', 'プロフィール画像を選択してください');
       return false;
     }
-    actions.setProfileCreationError('avatar', undefined);
+    setFormError('avatar', undefined);
     return true;
-  }, [avatarUpload.uploadedUrl, form.avatarPreviewUrl, form.avatarLocalUri, actions]);
-
-  // フォーム全体のバリデーション
-  const validateForm = useCallback(() => {
+  }, [form.avatarUri, uploadState.uploadedUrl, setFormError]);
+  
+  // 画像選択（Blobは別管理）
+  const selectImage = useCallback((uri: string, blob: Blob) => {
+    // Blobは参照で保持
+    imageDataRef.current = { uri, blob };
+    // storeにはURIのみ保存
+    updateForm({ avatarUri: uri });
+  }, [updateForm]);
+  
+  // 画像サイズチェック
+  const checkImageSize = useCallback((size: number): boolean => {
+    const maxSize = 5 * 1024 * 1024; // 5MB
+    if (size > maxSize) {
+      setFormError('avatar', '画像サイズは5MB以下にしてください');
+      return false;
+    }
+    return true;
+  }, [setFormError]);
+  
+  // プロフィール作成
+  const createProfile = useCallback(async () => {
+    if (!user) return { success: false, error: '認証が必要です' };
+    
+    // バリデーション
     const isDisplayNameValid = validateDisplayName(form.displayName);
     const isBioValid = validateBio(form.bio);
     const isAvatarValid = validateAvatar();
     
-    return isDisplayNameValid && isBioValid && isAvatarValid;
-  }, [form.displayName, form.bio, validateDisplayName, validateBio, validateAvatar]);
-
-  // プロフィール作成
-  const createProfile = useCallback(async () => {
-    if (!authUser || !validateForm()) {
+    if (!isDisplayNameValid || !isBioValid || !isAvatarValid) {
       return { success: false, error: 'バリデーションエラー' };
     }
-
-    // ローカルに保存されたBlobがあるかチェック
-    if (!form.avatarLocalBlob && !avatarUpload.uploadedUrl) {
-      return { success: false, error: 'アバター画像を選択してください' };
-    }
-
+    
     try {
-      let avatarUrl = avatarUpload.uploadedUrl;
+      updateForm({ isSubmitting: true });
+      setFormError('general', undefined);
       
-      // まだアップロードしていない場合はアップロード
-      if (form.avatarLocalBlob && !avatarUpload.uploadedUrl) {
-        actions.setProfileCreationSubmitting(true);
-        actions.setProfileCreationError('general', undefined);
-        
-        // 画像をアップロード
+      let avatarUrl = uploadState.uploadedUrl;
+      
+      // 画像がまだアップロードされていない場合
+      if (!avatarUrl && imageDataRef.current) {
         const uploadResult = await uploadAvatarMutation.mutateAsync({
-          userId: authUser.id,
-          file: form.avatarLocalBlob,
+          userId: user.id,
+          file: imageDataRef.current.blob,
         });
-        
         avatarUrl = uploadResult;
       }
       
       if (!avatarUrl) {
         throw new Error('アバター画像のアップロードに失敗しました');
       }
-
-      // プロフィールを作成
+      
+      // プロフィール作成
       await createProfileMutation.mutateAsync({
-        userId: authUser.id,
-        email: authUser.email,
-        emailVerified: authUser.emailVerified,
+        userId: user.id,
+        email: user.email,
+        emailVerified: user.emailVerified,
         displayName: form.displayName.trim(),
-        avatarUrl: avatarUrl,
+        avatarUrl,
         bio: form.bio.trim(),
       });
-
+      
+      // 画像データをクリア
+      imageDataRef.current = null;
+      
       return { success: true };
     } catch (error) {
-      actions.setProfileCreationError('general', error instanceof Error ? error.message : 'プロフィールの作成に失敗しました');
-      return { 
-        success: false, 
-        error: error instanceof Error ? error.message : 'プロフィールの作成に失敗しました' 
-      };
+      const message = error instanceof Error ? error.message : 'プロフィールの作成に失敗しました';
+      setFormError('general', message);
+      return { success: false, error: message };
     } finally {
-      actions.setProfileCreationSubmitting(false);
+      updateForm({ isSubmitting: false });
     }
-  }, [authUser, form, avatarUpload.uploadedUrl, validateForm, createProfileMutation, uploadAvatarMutation, actions]);
-
-  // アバター画像のサイズチェック
-  const checkAvatarSize = useCallback((size: number) => {
-    if (size > 5 * 1024 * 1024) {
-      actions.setProfileCreationError('avatar', '画像サイズは5MB以下にしてください');
-      return false;
-    }
-    return true;
-  }, [actions]);
-
-  // クリーンアップ（画面を離れる時など）
+  }, [
+    user,
+    form,
+    uploadState.uploadedUrl,
+    updateForm,
+    setFormError,
+    validateDisplayName,
+    validateBio,
+    validateAvatar,
+    createProfileMutation,
+    uploadAvatarMutation,
+  ]);
+  
+  // クリーンアップ（プロフィール作成成功時のみ実行）
   const cleanup = useCallback(() => {
-    // React Nativeでは URL.revokeObjectURL は不要（URIを直接使用しているため）
-    actions.resetProfileCreationForm();
-  }, [actions]);
-
+    imageDataRef.current = null;
+    resetForm();
+  }, [resetForm]);
+  
   return {
     // フォーム状態
     form,
-    avatarUpload,
+    uploadState,
     
     // バリデーション
     validateDisplayName,
     validateBio,
     validateAvatar,
-    validateForm,
     
     // アクション
-    updateForm: actions.updateProfileCreationForm,
-    setDisplayName: actions.setDisplayName,
-    setBio: actions.setBio,
-    setAvatarLocalData: actions.setAvatarLocalData,
+    updateForm,
+    selectImage,
+    checkImageSize,
     createProfile,
-    checkAvatarSize,
     cleanup,
     
     // ミューテーション状態
     isCreating: createProfileMutation.isPending,
     isUploading: uploadAvatarMutation.isPending,
-  };
-};
-
-// プロフィール編集フック（将来の実装用）
-export const useProfileEditHook = () => {
-  const { authUser } = useAccountContext();
-  const profile = useAccountProfile();
-  const updateProfileMutation = useUpdateProfileMutation();
-
-  const updateProfile = useCallback(async (
-    updates: Partial<Pick<typeof profile, 'displayName' | 'avatarUrl' | 'bio'>>
-  ) => {
-    if (!authUser || !profile) {
-      return { success: false, error: 'プロフィールが見つかりません' };
-    }
-
-    try {
-      await updateProfileMutation.mutateAsync({
-        userId: authUser.id,
-        updates,
-      });
-
-      return { success: true };
-    } catch (error) {
-      return { 
-        success: false, 
-        error: error instanceof Error ? error.message : 'プロフィールの更新に失敗しました' 
-      };
-    }
-  }, [authUser, profile, updateProfileMutation]);
-
-  return {
-    profile,
-    updateProfile,
-    isUpdating: updateProfileMutation.isPending,
   };
 };

@@ -1,93 +1,58 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { queryKeys } from '../../../../shared/presenter/queries/queryClient';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { queryKeys } from '../../../../shared/presenter/queries/queryKeys';
 import { accountService } from '../../infrastructure/services/accountService';
-import { accountStateManager } from '../../infrastructure/services/accountStateManager';
-import { useAccountStore } from '../../application/account-store';
 import { QueryProfile } from '../../domain/entities/Profile';
+import { useAccountFormStore } from '../../application/account-store';
 
-// プロフィール取得クエリ
-export const useProfileQuery = (userId: string | undefined) => {
+// プロフィール取得（サーバー状態はTanStack Queryで管理）
+export const useProfileQuery = (userId?: string) => {
   return useQuery({
-    queryKey: userId ? queryKeys.account.profile(userId) : [],
-    queryFn: async () => {
-      if (!userId) throw new Error('User ID is required');
-      const profile = await accountService.fetchProfile(userId);
-      return profile;
-    },
+    queryKey: queryKeys.account.profile(userId || ''),
+    queryFn: () => accountService.fetchProfile(userId!),
     enabled: !!userId,
-    staleTime: 30 * 60 * 1000, // 30分
-    gcTime: 60 * 60 * 1000,     // 1時間
-    // 成功時にZustandストアを更新
-    onSuccess: (data) => {
-      if (data) {
-        useAccountStore.getState().setProfile(data);
-      }
-    },
+    staleTime: 5 * 60 * 1000, // 5分
+    gcTime: 15 * 60 * 1000,   // 15分
   });
 };
 
-// プロフィール存在確認クエリ
-export const useCheckProfileExistsQuery = (userId: string | undefined) => {
+// プロフィール存在確認
+export const useCheckProfileExistsQuery = (userId?: string) => {
   return useQuery({
-    queryKey: userId ? queryKeys.account.checkExists(userId) : [],
-    queryFn: async () => {
-      if (!userId) throw new Error('User ID is required');
-      return await accountService.checkProfileExists(userId);
-    },
+    queryKey: queryKeys.account.exists(userId || ''),
+    queryFn: () => accountService.checkProfileExists(userId!),
     enabled: !!userId,
-    staleTime: 5 * 60 * 1000,  // 5分
-    gcTime: 10 * 60 * 1000,    // 10分
+    staleTime: 5 * 60 * 1000, // 5分
+    gcTime: 15 * 60 * 1000,   // 15分
   });
 };
 
 // プロフィール作成ミューテーション
 export const useCreateProfileMutation = () => {
   const queryClient = useQueryClient();
-  const setProfile = useAccountStore((state) => state.setProfile);
-  const setProfileCreationSubmitting = useAccountStore((state) => state.setProfileCreationSubmitting);
-  const setProfileCreationError = useAccountStore((state) => state.setProfileCreationError);
+  const setHasCompletedProfile = useAccountFormStore((state) => state.setHasCompletedProfile);
+  const resetForm = useAccountFormStore((state) => state.resetForm);
 
   return useMutation({
-    mutationFn: async (params: {
-      userId: string;
-      email: string;
-      emailVerified: boolean;
-      displayName: string;
-      avatarUrl: string;
-      bio: string;
-    }) => {
-      // Zustandストアの送信状態を更新
-      setProfileCreationSubmitting(true);
-      
-      // accountStateManagerを通じて作成（自動的にストア更新）
-      return await accountStateManager.createProfile(params);
-    },
+    mutationFn: (params) => accountService.createProfile(params),
     
-    onSuccess: (data, variables) => {
+    onSuccess: (profile, variables) => {
       // キャッシュを更新
       queryClient.setQueryData(
         queryKeys.account.profile(variables.userId),
-        data
+        profile
       );
       queryClient.setQueryData(
-        queryKeys.account.checkExists(variables.userId),
+        queryKeys.account.exists(variables.userId),
         true
       );
       
-      // 成功時のクリーンアップ
-      setProfileCreationSubmitting(false);
-      useAccountStore.getState().resetProfileCreationForm();
+      // 状態を更新
+      setHasCompletedProfile(true);
+      resetForm();
     },
     
-    onError: (error, variables) => {
+    onError: (error) => {
       console.error('Profile creation failed:', error);
-      
-      // エラー処理
-      setProfileCreationSubmitting(false);
-      setProfileCreationError(
-        'general',
-        error instanceof Error ? error.message : 'プロフィールの作成に失敗しました'
-      );
     },
   });
 };
@@ -97,15 +62,11 @@ export const useUpdateProfileMutation = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (params: {
+    mutationFn: ({ userId, updates }: {
       userId: string;
       updates: Partial<Pick<QueryProfile, 'displayName' | 'avatarUrl' | 'bio'>>;
-    }) => {
-      // accountStateManagerを通じて更新（自動的にストア更新）
-      return await accountStateManager.updateProfile(params.userId, params.updates);
-    },
+    }) => accountService.updateProfile(userId, updates),
     
-    // 楽観的更新
     onMutate: async ({ userId, updates }) => {
       // 既存のクエリをキャンセル
       await queryClient.cancelQueries({ 
@@ -119,94 +80,74 @@ export const useUpdateProfileMutation = () => {
       
       // 楽観的更新
       if (previousProfile) {
-        const updatedProfile = {
-          ...previousProfile,
-          ...updates,
-          updatedAt: new Date().toISOString(),
-        };
         queryClient.setQueryData(
           queryKeys.account.profile(userId),
-          updatedProfile
+          { ...previousProfile, ...updates }
         );
       }
       
-      // ロールバック用のコンテキストを返す
       return { previousProfile };
     },
     
-    onError: (error, variables, context) => {
-      console.error('Profile update failed:', error);
-      
+    onError: (error, { userId }, context) => {
       // エラー時はロールバック
       if (context?.previousProfile) {
         queryClient.setQueryData(
-          queryKeys.account.profile(variables.userId),
+          queryKeys.account.profile(userId),
           context.previousProfile
         );
       }
     },
     
-    onSettled: (data, error, variables) => {
-      // 最終的に最新データを取得
+    onSettled: (data, error, { userId }) => {
+      // 最新データを取得
       queryClient.invalidateQueries({
-        queryKey: queryKeys.account.profile(variables.userId),
+        queryKey: queryKeys.account.profile(userId)
       });
     },
   });
 };
 
-// アバターアップロードミューテーション
+// アバターアップロードミューテーション（画像管理の改善）
 export const useUploadAvatarMutation = () => {
-  const setAvatarUploading = useAccountStore((state) => state.setAvatarUploading);
-  const setAvatarUploadProgress = useAccountStore((state) => state.setAvatarUploadProgress);
-  const setAvatarUploadedUrl = useAccountStore((state) => state.setAvatarUploadedUrl);
-  const setAvatarUploadError = useAccountStore((state) => state.setAvatarUploadError);
+  const setUploadState = useAccountFormStore((state) => state.setUploadState);
 
   return useMutation({
-    mutationFn: async (params: {
-      userId: string;
-      file: File | Blob;
-    }) => {
-      // アップロード開始
-      setAvatarUploading(true);
-      setAvatarUploadProgress(0);
-      
-      // accountStateManagerを通じてアップロード
-      return await accountStateManager.uploadAvatar({
-        userId: params.userId,
-        file: params.file,
-        onProgress: (progress) => {
-          setAvatarUploadProgress(progress);
-        },
+    mutationFn: (params) => accountService.uploadAvatar(params),
+    
+    onMutate: () => {
+      setUploadState({ 
+        isUploading: true, 
+        uploadProgress: 0,
+        error: undefined 
       });
     },
     
     onSuccess: (avatarUrl) => {
-      // 成功時の処理（accountStateManagerで既にストア更新済み）
-      console.log('Avatar uploaded successfully:', avatarUrl);
+      setUploadState({ 
+        uploadedUrl: avatarUrl,
+        isUploading: false,
+        uploadProgress: 100 
+      });
     },
     
     onError: (error) => {
-      console.error('Avatar upload failed:', error);
-      // エラー処理（accountStateManagerで既にストア更新済み）
-    },
-    
-    onSettled: () => {
-      // 完了時の処理
-      setAvatarUploading(false);
+      setUploadState({ 
+        error: error instanceof Error ? error.message : 'アップロードに失敗しました',
+        isUploading: false,
+        uploadProgress: 0 
+      });
     },
   });
 };
 
-// 既存アバター削除ミューテーション
+// アバター削除ミューテーション
 export const useDeleteAvatarMutation = () => {
   return useMutation({
-    mutationFn: async (avatarUrl: string) => {
-      await accountStateManager.deleteAvatar(avatarUrl);
-    },
+    mutationFn: (params) => accountService.deleteAvatar(params),
     onError: (error) => {
-      console.error('Avatar deletion failed:', error);
-      // 削除エラーは無視（ユーザーには影響なし）
+      // 削除エラーは無視（ユーザーに影響なし）
+      console.warn('Avatar deletion failed:', error);
     },
   });
 };

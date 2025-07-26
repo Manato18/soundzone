@@ -1,112 +1,42 @@
-import React, { createContext, PropsWithChildren, useContext, useEffect, useRef } from 'react';
+import React, { createContext, PropsWithChildren, useContext, useEffect } from 'react';
 import { Alert } from 'react-native';
-import { useAccountStore, useHasCompletedProfile } from '../../application/account-store';
-import { accountStateManager, AccountError } from '../../infrastructure/services/accountStateManager';
-import { IAuthUser } from '../../../../shared/domain/interfaces/IAuthContext';
+import { useAuth } from '../../../auth/presentation/hooks/use-auth';
+import { useAccountProfile } from '../hooks/use-account';
+import { useAccountFormStore } from '../../application/account-store';
 
-// Context値の型定義
+// シンプルなContext値
 interface AccountContextValue {
   hasCompletedProfile: boolean;
   isCheckingProfile: boolean;
-  authUser: IAuthUser | null;
 }
 
-// Context作成
 const AccountContext = createContext<AccountContextValue | undefined>(undefined);
 
-// Provider Props
-interface AccountProviderProps extends PropsWithChildren {
-  authUser: IAuthUser | null;
-}
-
-// Provider実装
-export const AccountProvider: React.FC<AccountProviderProps> = ({ children, authUser }) => {
-  const hasCompletedProfile = useHasCompletedProfile();
-  const setHasCompletedProfile = useAccountStore((state) => state.setHasCompletedProfile);
+// シンプルなProvider実装（StateManagerは不要）
+export const AccountProvider: React.FC<PropsWithChildren> = ({ children }) => {
+  const { user } = useAuth();
+  const { profileExists, hasCompletedProfile, isLoading } = useAccountProfile();
+  const setHasCompletedProfile = useAccountFormStore((state) => state.setHasCompletedProfile);
   
-  // 無限ループ防止用のフラグ
-  const isInitialized = useRef(false);
-  const lastUserId = useRef<string | null>(null);
-  const initPromise = useRef<Promise<void> | null>(null);
-  
-  // プロフィールチェック中の状態
-  const [isCheckingProfile, setIsCheckingProfile] = React.useState(false);
-  
-
-  // エラーハンドリングの設定
+  // プロフィール存在確認が完了したら状態を更新
   useEffect(() => {
-    accountStateManager.setErrorCallback((error: AccountError) => {
-      // エラータイプに応じてユーザーへのフィードバック
-      switch (error.code) {
-        case 'PROFILE_NOT_FOUND':
-          // プロフィール未作成は正常な状態なのでアラート不要
-          break;
-        case 'PROFILE_CREATE_FAILED':
-        case 'PROFILE_UPDATE_FAILED':
-          Alert.alert('エラー', error.message, [{ text: 'OK' }]);
-          break;
-        case 'AVATAR_UPLOAD_FAILED':
-          Alert.alert('アップロードエラー', error.message, [{ text: 'OK' }]);
-          break;
-        case 'NETWORK_ERROR':
-          Alert.alert('通信エラー', 'インターネット接続を確認してください', [{ text: 'OK' }]);
-          break;
-      }
-    });
-  }, []);
-
-  // 認証状態の変化を監視してプロフィール状態を確認
-  useEffect(() => {
-
-    // authUserが存在する場合（認証済みでメール確認済み）
-    if (authUser && authUser.emailVerified) {
-      // 無限ループ防止: 同じユーザーIDで重複実行しない
-      if (lastUserId.current === authUser.id && isInitialized.current) {
-        return;
-      }
-
-      // 初期化中の場合は待機
-      if (initPromise.current) {
-        return;
-      }
-
-      lastUserId.current = authUser.id;
-      setIsCheckingProfile(true);
-      
-      // accountStateManagerでプロフィール初期化
-      initPromise.current = accountStateManager.initializeProfile(authUser.id)
-        .finally(() => {
-          setIsCheckingProfile(false);
-          isInitialized.current = true;
-          initPromise.current = null;
-        });
-    } else if (!authUser && lastUserId.current) {
-      // ログアウト時のリセット
-      lastUserId.current = null;
-      isInitialized.current = false;
-      initPromise.current = null;
-      setIsCheckingProfile(false);
-      
-      // accountStateManagerのクリーンアップ
-      accountStateManager.cleanup();
+    if (!isLoading && user?.emailVerified) {
+      setHasCompletedProfile(profileExists);
     }
-  }, [authUser]);
-
-  // コンポーネントのアンマウント時のクリーンアップ
-  useEffect(() => {
-    return () => {
-      if (initPromise.current) {
-        initPromise.current = null;
-      }
-    };
-  }, []);
-
+  }, [isLoading, profileExists, user?.emailVerified, setHasCompletedProfile]);
+  
+  // エラーハンドリング（シンプルに）
+  const handleError = (error: Error) => {
+    if (error.message.includes('ネットワーク')) {
+      Alert.alert('通信エラー', 'インターネット接続を確認してください', [{ text: 'OK' }]);
+    }
+  };
+  
   const value: AccountContextValue = {
     hasCompletedProfile,
-    isCheckingProfile,
-    authUser,
+    isCheckingProfile: isLoading,
   };
-
+  
   return (
     <AccountContext.Provider value={value}>
       {children}

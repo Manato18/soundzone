@@ -3,7 +3,6 @@ import React, { useMemo } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { useAuth } from '../features/auth/presentation/hooks/use-auth';
 import { AccountProvider, useAccountContext } from '../features/account/presentation/providers/AccountProvider';
-import { IAuthUser } from '../shared/domain/interfaces/IAuthContext';
 import AppNavigator from './AppNavigator';
 import AuthNavigator from './AuthNavigator';
 import ProfileCreationNavigator from './ProfileCreationNavigator';
@@ -37,15 +36,20 @@ function InnerNavigator() {
 export default function RootNavigator() {
   const { isAuthenticated, isLoading: isAuthLoading, user } = useAuth();
 
-  // authStateManagerの初期化はAuthProviderで一元管理されるため、ここでは行わない
+  // デバッグログ
+  React.useEffect(() => {
+    console.log('[RootNavigator] Auth state:', {
+      isAuthenticated,
+      isAuthLoading,
+      user: user ? {
+        id: user.id,
+        email: user.email,
+        emailVerified: user.emailVerified
+      } : null
+    });
+  }, [isAuthenticated, isAuthLoading, user]);
 
-  // Auth情報をIAuthUser形式に変換（メモ化して参照を安定化）
-  const authUser: IAuthUser | null = useMemo(() => {
-    if (user && user.emailVerified) {
-      return { id: user.id, email: user.email, emailVerified: user.emailVerified };
-    }
-    return null;
-  }, [user?.id, user?.email, user?.emailVerified]);
+  // authStateManagerの初期化はAuthProviderで一元管理されるため、ここでは行わない
 
   // ローディング中の表示
   if (isAuthLoading) {
@@ -83,7 +87,7 @@ export default function RootNavigator() {
   // 認証済み & メール確認済みの場合はAccountProviderでラップ
   return (
     <NavigationContainer>
-      <AccountProvider authUser={authUser}>
+      <AccountProvider>
         <InnerNavigator />
       </AccountProvider>
     </NavigationContainer>

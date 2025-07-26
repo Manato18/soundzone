@@ -270,6 +270,18 @@ export class SupabaseAuthService implements AuthService {
 
       const { data, error } = await Promise.race([verifyPromise, timeoutPromise]);
 
+      console.log('[AuthService] verifyOTP response:', {
+        data: data ? {
+          user: data.user ? {
+            id: data.user.id,
+            email: data.user.email,
+            email_confirmed_at: data.user.email_confirmed_at
+          } : null,
+          session: !!data.session
+        } : null,
+        error
+      });
+
       if (error) {
         // ネットワークエラーの特別な処理
         if (networkService.isNetworkError(error)) {
@@ -305,9 +317,19 @@ export class SupabaseAuthService implements AuthService {
         await sessionPersistence.persistSession(data.session);
       }
 
+      // OTP検証後は最新のユーザー情報を取得
+      // email_confirmed_atが即座に反映されない可能性があるため
+      const { data: { user: refreshedUser } } = await supabase.auth.getUser();
+      
+      console.log('[AuthService] Refreshed user after OTP:', {
+        id: refreshedUser?.id,
+        email: refreshedUser?.email,
+        email_confirmed_at: refreshedUser?.email_confirmed_at
+      });
+
       return {
         success: true,
-        data: this.mapSupabaseUser(data.user),
+        data: this.mapSupabaseUser(refreshedUser || data.user),
       };
     } catch (error) {
       // ネットワークエラーの特別な処理

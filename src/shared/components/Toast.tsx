@@ -54,7 +54,7 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [toastConfig, setToastConfig] = useState<ToastConfig | null>(null);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const translateY = useRef(new Animated.Value(-100)).current;
-  const hideTimeoutRef = useRef<NodeJS.Timeout>();
+  const hideTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
 
   useEffect(() => {
     toast.setShowToast((config) => {
@@ -87,7 +87,7 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       // 自動非表示
       hideTimeoutRef.current = setTimeout(() => {
         hideToast();
-      }, toastConfig.duration);
+      }, toastConfig.duration || 3000);
     }
   }, [toastConfig]);
 

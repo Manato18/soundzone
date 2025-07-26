@@ -4,6 +4,16 @@ import { StorageError } from '@supabase/storage-js';
 
 // Infrastructure Layer: Supabase APIとの通信
 export class AccountService {
+  constructor() {
+    // メソッドのthisコンテキストをバインド
+    this.createProfile = this.createProfile.bind(this);
+    this.fetchProfile = this.fetchProfile.bind(this);
+    this.updateProfile = this.updateProfile.bind(this);
+    this.checkProfileExists = this.checkProfileExists.bind(this);
+    this.uploadAvatar = this.uploadAvatar.bind(this);
+    this.deleteAvatar = this.deleteAvatar.bind(this);
+  }
+
   // プロフィール作成
   // 注: 認証チェックは呼び出し側の責任で行う
   async createProfile(params: {
@@ -133,7 +143,7 @@ export class AccountService {
         });
 
       if (error) {
-        if ((error as StorageError).statusCode === 413) {
+        if ('statusCode' in error && error.statusCode === 413) {
           throw new Error('画像サイズが大きすぎます。5MB以下の画像を選択してください');
         }
         throw new Error(error.message || 'アバター画像のアップロードに失敗しました');

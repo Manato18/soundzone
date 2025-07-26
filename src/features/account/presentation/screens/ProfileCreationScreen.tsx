@@ -1,4 +1,4 @@
-import React, { useEffect, useLayoutEffect, memo, useRef } from 'react';
+import React, { useEffect, useLayoutEffect, memo } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -16,35 +16,25 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
-import { useProfileCreationFormHook } from '../hooks/use-account';
+import { useProfileCreationForm } from '../hooks/use-account';
 import { showToast } from '../../../../shared/components/Toast';
 import { uriToBlob } from '../../../../shared/utils/imageCompressor';
 
 function ProfileCreationScreen() {
-  // コンポーネントのマウント/アンマウントをログ
-  React.useEffect(() => {
-    console.log('🟢 [ProfileCreationScreen] MOUNTED');
-    return () => {
-      console.log('🔴 [ProfileCreationScreen] UNMOUNTED');
-    };
-  }, []);
-  
   const navigation = useNavigation();
   const {
     form,
-    avatarUpload,
+    uploadState,
     validateDisplayName,
     validateBio,
     updateForm,
-    setDisplayName,
-    setBio,
-    setAvatarLocalData,
+    selectImage,
+    checkImageSize,
     createProfile,
-    checkAvatarSize,
     cleanup,
     isCreating,
     isUploading,
-  } = useProfileCreationFormHook();
+  } = useProfileCreationForm();
 
   // ヘッダーを非表示
   useLayoutEffect(() => {
@@ -53,7 +43,7 @@ function ProfileCreationScreen() {
     });
   }, [navigation]);
 
-  // クリーンアップはプロフィール作成完了時のみ実行
+  // クリーンアップはプロフィール作成成功時のみ実行
   // アンマウント時には実行しない（再マウントで状態が消えるため）
 
   // 権限リクエスト
@@ -116,15 +106,14 @@ function ProfileCreationScreen() {
     }
   };
 
-  // 画像選択後の処理
+  // 画像選択後の処理（改善版）
   const handleImageSelected = async (asset: ImagePicker.ImagePickerAsset) => {
     try {
-      // Blobに変換して保存
+      // Blobに変換
       const blob = await uriToBlob(asset.uri);
       
       // ファイルサイズチェック
-      if (!checkAvatarSize(blob.size)) {
-        showToast('画像サイズは5MB以下にしてください', 'error');
+      if (!checkImageSize(blob.size)) {
         return;
       }
       
@@ -149,8 +138,8 @@ function ProfileCreationScreen() {
         });
       }
       
-      // ローカルプレビューとBlobを設定
-      setAvatarLocalData(asset.uri, blob);
+      // 画像を選択（Blobは別管理）
+      selectImage(asset.uri, blob);
       showToast('画像を選択しました', 'success');
     } catch (error) {
       console.error('Image selection error:', error);
@@ -171,9 +160,8 @@ function ProfileCreationScreen() {
     }
   };
 
-  // アバター画像の表示URL（ローカルURIを優先表示）
-  const avatarDisplayUrl = form.avatarLocalUri || form.avatarPreviewUrl || avatarUpload.uploadedUrl;
-  
+  // アバター画像の表示URL
+  const avatarDisplayUrl = form.avatarUri || uploadState.uploadedUrl;
 
   // フォームが有効かどうか
   const isFormValid = 
@@ -181,6 +169,7 @@ function ProfileCreationScreen() {
     !form.errors.displayName &&
     !form.errors.bio &&
     avatarDisplayUrl &&
+    !form.isSubmitting &&
     !isCreating &&
     !isUploading;
 
@@ -222,7 +211,7 @@ function ProfileCreationScreen() {
                 <View style={styles.avatarOverlay}>
                   <ActivityIndicator color="white" />
                   <Text style={styles.uploadingText}>
-                    {Math.round(avatarUpload.uploadProgress)}%
+                    {Math.round(uploadState.uploadProgress)}%
                   </Text>
                 </View>
               ) : (
@@ -270,7 +259,7 @@ function ProfileCreationScreen() {
               placeholder="表示名を入力"
               value={form.displayName}
               onChangeText={(text) => {
-                setDisplayName(text);
+                updateForm({ displayName: text });
                 validateDisplayName(text);
               }}
               maxLength={32}
@@ -296,7 +285,7 @@ function ProfileCreationScreen() {
               placeholder="自己紹介を入力（任意）"
               value={form.bio}
               onChangeText={(text) => {
-                setBio(text);
+                updateForm({ bio: text });
                 validateBio(text);
               }}
               maxLength={300}
