@@ -4,6 +4,8 @@ import React from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Linking,
+  Platform,
   StyleSheet,
   Text,
   TextInput,
@@ -71,7 +73,35 @@ export default function SignUpScreen({ navigation }: SignUpScreenProps) {
   React.useEffect(() => {
     if (form.errors.general && form.errors.general !== shownErrorRef.current) {
       shownErrorRef.current = form.errors.general;
-      Alert.alert('登録エラー', form.errors.general);
+      
+      // ネットワークエラーの場合は特別な表示
+      if (form.errors.general.includes('インターネット接続') || 
+          form.errors.general.includes('ネットワーク') ||
+          form.errors.general.includes('接続を確認')) {
+        Alert.alert(
+          'ネットワークエラー',
+          form.errors.general,
+          [
+            {
+              text: '設定を開く',
+              onPress: () => {
+                // React Native Linking APIを使って設定アプリを開く
+                if (Platform.OS === 'ios') {
+                  Linking.openURL('app-settings:');
+                } else {
+                  Linking.openSettings();
+                }
+              },
+            },
+            {
+              text: 'OK',
+              style: 'cancel',
+            },
+          ]
+        );
+      } else {
+        Alert.alert('登録エラー', form.errors.general);
+      }
     }
     // エラーがクリアされた場合はRefもクリア
     if (!form.errors.general) {
