@@ -1,17 +1,58 @@
 import { NavigationContainer } from '@react-navigation/native';
-import React from 'react';
+import React, { useMemo } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { useAuth } from '../features/auth/presentation/hooks/use-auth';
+import { AccountProvider, useAccountContext } from '../features/account/presentation/providers/AccountProvider';
 import AppNavigator from './AppNavigator';
 import AuthNavigator from './AuthNavigator';
+import ProfileCreationNavigator from './ProfileCreationNavigator';
+
+// 内部ナビゲーターコンポーネント（AccountContext内で使用）
+function InnerNavigator() {
+  const { hasCompletedProfile, isCheckingProfile } = useAccountContext();
+  
+  React.useEffect(() => {
+    console.log('🔷 [InnerNavigator] State:', { hasCompletedProfile, isCheckingProfile });
+  }, [hasCompletedProfile, isCheckingProfile]);
+
+  // ローディング中の表示
+  if (isCheckingProfile) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#007AFF" />
+      </View>
+    );
+  }
+
+  // 認証済み & メール確認済み & プロフィール未作成の場合
+  if (!hasCompletedProfile) {
+    return <ProfileCreationNavigator />;
+  }
+
+  // すべて完了している場合
+  return <AppNavigator />;
+}
 
 export default function RootNavigator() {
-  const { isAuthenticated, isLoading, user } = useAuth();
+  const { isAuthenticated, isLoading: isAuthLoading, user } = useAuth();
+
+  // デバッグログ
+  React.useEffect(() => {
+    console.log('[RootNavigator] Auth state:', {
+      isAuthenticated,
+      isAuthLoading,
+      user: user ? {
+        id: user.id,
+        email: user.email,
+        emailVerified: user.emailVerified
+      } : null
+    });
+  }, [isAuthenticated, isAuthLoading, user]);
 
   // authStateManagerの初期化はAuthProviderで一元管理されるため、ここでは行わない
 
   // ローディング中の表示
-  if (isLoading) {
+  if (isAuthLoading) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#007AFF" />
@@ -21,43 +62,34 @@ export default function RootNavigator() {
 
   // 認証状態による画面分岐
   // 1. 未認証: AuthNavigator（ログイン・新規登録・メール認証）
-  // 2. 認証完了: AppNavigator（メインアプリ）
-  
-  console.log('🔍 Current auth status:', {
-    isAuthenticated,
-    isLoading,
-    user: user ? {
-      id: user.id,
-      email: user.email,
-      emailVerified: user.emailVerified,
-    } : null,
-  });
+  // 2. 認証済み & メール未確認: AuthNavigator（メール認証画面）
+  // 3. 認証済み & メール確認済み & プロフィール未作成: ProfileCreationNavigator
+  // 4. 認証済み & メール確認済み & プロフィール作成済み: AppNavigator
 
-  // メール認証完了済みの場合のみAppNavigatorに遷移
-  const shouldShowApp = isAuthenticated && user?.emailVerified;
-  
-  console.log('🎯 Navigation decision:', {
-    shouldShowApp,
-    reason: shouldShowApp ? 'User is authenticated and email verified' : 
-            !isAuthenticated ? 'User not authenticated' : 
-            'Email not verified'
-  });
-
-  if (shouldShowApp) {
-    // 認証完了状態 → AppNavigator
-    console.log('✅ Showing AppNavigator - user authenticated and verified');
+  // 未認証の場合
+  if (!isAuthenticated) {
     return (
       <NavigationContainer>
-        <AppNavigator />
+        <AuthNavigator />
       </NavigationContainer>
     );
   }
 
-  // 未認証またはメール認証待ち状態 → AuthNavigator
-  console.log('🔐 Showing AuthNavigator - user not authenticated or needs email verification');
+  // 認証済みだがメール未確認の場合
+  if (!user?.emailVerified) {
+    return (
+      <NavigationContainer>
+        <AuthNavigator />
+      </NavigationContainer>
+    );
+  }
+
+  // 認証済み & メール確認済みの場合はAccountProviderでラップ
   return (
     <NavigationContainer>
-      <AuthNavigator />
+      <AccountProvider>
+        <InnerNavigator />
+      </AccountProvider>
     </NavigationContainer>
   );
 }

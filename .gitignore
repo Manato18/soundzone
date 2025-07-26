@@ -52,3 +52,6 @@ android/.gradle/
 # Temporary files
 *.tmp
 *.temp
+
+# MCP configuration
+.mcp.json

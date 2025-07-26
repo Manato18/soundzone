@@ -93,7 +93,10 @@ export default function EmailVerificationScreen({
 
     // OTP検証処理
   const handleVerifyOtp = useCallback(async (code: string) => {
+    console.log('[EmailVerificationScreen] Starting OTP verification...');
     const result = await verifyOTP(code);
+    
+    console.log('[EmailVerificationScreen] OTP verification result:', result);
     
     if (result.success) {
       // OTP認証成功後、アラートを表示

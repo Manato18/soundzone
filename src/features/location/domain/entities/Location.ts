@@ -1,6 +1,7 @@
 export interface Location {
   latitude: number;
   longitude: number;
+  altitude: number | null;
   heading: number | null;
   accuracy: number | null;
 }

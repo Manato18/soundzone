@@ -11,6 +11,7 @@ import { AppInitializer } from './src/shared/infra/initialization/appInitializer
 import { AuthProvider } from './src/features/auth/presentation/providers';
 import { LayersProvider } from './src/features/layers/presentation/providers/LayersProvider';
 import { LocationProvider } from './src/features/location/presentation/providers/LocationProvider';
+import { ToastProvider } from './src/shared/components/Toast';
 
 export default function App() {
   const [loaded] = useFonts({
@@ -39,14 +40,16 @@ export default function App() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <LocationProvider>
-          <LayersProvider>
-            <RootNavigator />
-            <StatusBar style="auto" />
-          </LayersProvider>
-        </LocationProvider>
-      </AuthProvider>
+      <ToastProvider>
+        <AuthProvider>
+          <LocationProvider>
+            <LayersProvider>
+              <RootNavigator />
+              <StatusBar style="auto" />
+            </LayersProvider>
+          </LocationProvider>
+        </AuthProvider>
+      </ToastProvider>
     </QueryClientProvider>
   );
 } 

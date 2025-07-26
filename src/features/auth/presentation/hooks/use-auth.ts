@@ -123,12 +123,22 @@ export const useSignOutMutation = (
 export const useVerifyOTPMutation = (
   options?: Omit<UseMutationOptions<AuthResult<QueryUser>, Error, { email: string; token: string; type: 'signup' | 'email' | 'recovery' }>, 'mutationFn'>
 ) => {
+  const queryClient = useQueryClient();
+  
   return useMutation({
     mutationFn: async ({ email, token, type }) => {
       const result = await authService.verifyOTP(email, token, type);
       
-      // authStateManagerがSupabaseの認証状態変更を検知して自動的に状態を同期するため、
-      // ここでは結果を返すのみ
+      // OTP検証成功後は認証状態を手動で更新
+      if (result.success && result.data) {
+        // authStateManagerがSupabaseの認証状態変更を検知して自動的に状態を同期するが、
+        // 念のため手動でも更新をトリガー
+        await queryClient.invalidateQueries({ queryKey: queryKeys.auth.user() });
+        
+        // authStateManagerに最新のユーザー情報を再取得させる
+        const { authStateManager } = await import('../../infra/services/authStateManager');
+        await authStateManager.refreshUserData();
+      }
       
       return result;
     },

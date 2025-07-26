@@ -1,125 +1,78 @@
-# SoundZone 一元管理アーキテクチャガイド
+# SoundZone 状態管理アーキテクチャガイド
 
 ## 目次
 1. [概要](#概要)
-2. [現状の実装分析](#現状の実装分析)
-3. [Auth機能の状態管理詳細](#auth機能の状態管理詳細)
-4. [Layers機能の状態管理詳細](#layers機能の状態管理詳細)
-5. [Location機能の状態管理詳細](#location機能の状態管理詳細)
-6. [一元管理の判断基準](#一元管理の判断基準)
-7. [各機能の詳細分析](#各機能の詳細分析)
-8. [メリット・デメリット](#メリット・デメリット)
-9. [今後の推奨事項](#今後の推奨事項)
-10. [実装パターン](#実装パターン)
-
-
-Layer, Auth, Location は一元管理が良さそう
+2. [状態管理の基本原則](#状態管理の基本原則)
+3. [一元管理と個別管理の判断基準](#一元管理と個別管理の判断基準)
+4. [実装パターン](#実装パターン)
+5. [各機能の実装詳細](#各機能の実装詳細)
+   - [Auth機能（一元管理）](#auth機能一元管理)
+   - [Layers機能（一元管理）](#layers機能一元管理)
+   - [Location機能（一元管理）](#location機能一元管理)
+   - [Account機能（個別管理）](#account機能個別管理)
+6. [ベストプラクティス](#ベストプラクティス)
+7. [アンチパターン](#アンチパターン)
 
 ## 概要
 
-このドキュメントは、SoundZoneアプリにおける状態管理の一元化に関する現状分析と今後の方針を示します。StateManagement.mdの設計原則に基づき、各機能モジュールの最適な管理方法を定義します。
+このドキュメントは、SoundZoneアプリにおける状態管理の実装指針を示します。[StateManagement.md](./StateManagement.md)の設計原則に基づき、各機能の最適な管理方法を定義しています。
 
-## 現状の実装分析
-
-### アーキテクチャ構成
-- **状態管理**: Zustand + React Query
+### 技術スタック
+- **状態管理**: Zustand + TanStack Query
 - **永続化**: MMKV
 - **レイヤー構造**: Domain → Infrastructure → Application → Presentation
 
-### 実装済みの一元管理
+## 状態管理の基本原則
 
-| 機能 | Provider実装 | 状態管理 | 永続化 | 備考 |
-|-----|------------|---------|--------|------|
-| Layers | ✅ LayersProvider | layers-store.ts | ✅ settings, selectedLayerIds | 完全な一元管理実装 |
-| Auth | ✅ AuthProvider | auth-store.ts + authStateManager | ✅ settings only | 完全な一元管理実装済み |
-| Location | ✅ LocationProvider | location-store.ts + locationStateManager | ✅ settings | 完全な一元管理実装済み |
+### 状態の分類（StateManagement.mdに準拠）
 
----
+1. **Ephemeral UI state**（一時的なUI状態）
+   - フォーム入力値、モーダル開閉、ローディング状態
+   - → Zustand（非永続）
 
-## 一元状態管理（Centralized State Management）
+2. **Remote server state**（リモートサーバー状態）
+   - API由来のデータ
+   - → TanStack Query
 
-### 一元管理の判断基準
+3. **Persistent client state**（永続的なクライアント状態）
+   - ユーザー設定、トークン
+   - → Zustand + MMKV
 
-**一元管理が必要な場合**：
-- 3つ以上の画面で同じデータを参照
-- 画面間でのリアルタイム同期が必要
-- 他の機能がそのデータに依存
-- アプリ全体の動作に影響するグローバル状態
+## 一元管理と個別管理の判断基準
 
-**個別管理で十分な場合**：
-- 特定画面でのみ使用される状態
-- 画面遷移時にリセットしてよい一時的なデータ
-- 他機能に影響しない独立した処理
+### 一元管理が必要な場合
+- ✅ 3つ以上の画面で同じデータを参照
+- ✅ 画面間でのリアルタイム同期が必要
+- ✅ 他の機能がそのデータに依存
+- ✅ アプリ全体の動作に影響するグローバル状態
 
-### Provider実装パターン
+### 個別管理で十分な場合
+- ✅ 特定画面でのみ使用される状態
+- ✅ 画面遷移時にリセットしてよい一時的なデータ
+- ✅ 他機能に影響しない独立した処理
 
-```typescript
-// 1. ディレクトリ構造
+## 実装パターン
+
+### ディレクトリ構造
+```
 src/features/<feature>/
 ├── application/
 │   └── <feature>-store.ts         # Zustandストア
 ├── domain/
 │   └── entities/                  # ドメインエンティティ
 ├── infrastructure/
-│   └── services/                  # APIサービス、状態管理サービス
+│   └── services/                  # APIサービス、StateManager（必要な場合）
 └── presentation/
     ├── hooks/
     │   ├── use-<feature>.ts       # 統合フック
     │   └── use-<feature>-query.ts # TanStack Query統合
     └── providers/
         └── <Feature>Provider.tsx   # コンテキストプロバイダー
-
-// 2. Provider実装例
-export const FeatureProvider: React.FC<PropsWithChildren> = ({ children }) => {
-  // 初期データ取得
-  const { data, isLoading, error } = useQuery({
-    queryKey: ['feature'],
-    queryFn: fetchFeatureData,
-    staleTime: Infinity, // データ特性に応じて設定
-  });
-
-  // Zustandストアへの同期
-  useEffect(() => {
-    if (data) {
-      useFeatureStore.getState().setData(data);
-    }
-  }, [data]);
-
-  if (error) return <ErrorBoundary error={error} />;
-  return <>{children}</>;
-};
 ```
 
-### 状態の分類と管理戦略
-
+### Zustand Middlewareの正しい順序
 ```typescript
-interface FeatureState {
-  // サーバー状態（TanStack Queryで管理）
-  data: Entity[];
-  
-  // UI状態（Zustand管理、非永続）
-  ui: {
-    isLoading: boolean;
-    error: string | null;
-    selectedId: string | null;
-    modalState: ModalState;
-  };
-  
-  // 設定（Zustand管理、MMKV永続化）
-  settings: {
-    userPreferences: Preferences;
-    cachedSelections: string[];
-  };
-  
-  // プロセス状態（競合防止用）
-  processState: 'IDLE' | 'PROCESSING' | 'ERROR';
-}
-```
-
-### Zustand Middlewareの順序（重要）
-
-```typescript
-// 正しい順序：外側から内側へ
+// 必ず外側から内側へ: devtools → persist → immer → subscribeWithSelector
 export const useFeatureStore = create<FeatureState & FeatureActions>()(
   devtools(              // 1. 最外層：開発ツール
     persist(             // 2. 永続化
@@ -132,7 +85,7 @@ export const useFeatureStore = create<FeatureState & FeatureActions>()(
         name: 'feature-storage',
         storage: mmkvStorage,
         partialize: (state) => ({
-          settings: state.settings  // 設定のみ永続化
+          settings: state.settings  // 永続化する部分を指定
         })
       }
     ),
@@ -141,227 +94,83 @@ export const useFeatureStore = create<FeatureState & FeatureActions>()(
 );
 ```
 
-### 楽観的更新の実装
+## 各機能の実装詳細
 
-```typescript
-const useUpdateFeatureMutation = () => {
-  const queryClient = useQueryClient();
-  
-  return useMutation({
-    mutationFn: updateFeature,
-    onMutate: async (newData) => {
-      // 1. 既存クエリをキャンセル
-      await queryClient.cancelQueries({ queryKey: ['feature'] });
-      
-      // 2. 現在のデータを保存
-      const previousData = queryClient.getQueryData(['feature']);
-      
-      // 3. 楽観的更新
-      queryClient.setQueryData(['feature'], (old) => ({
-        ...old,
-        ...newData
-      }));
-      
-      // 4. ロールバック用コンテキストを返す
-      return { previousData };
-    },
-    onError: (err, _, context) => {
-      // エラー時はロールバック
-      if (context?.previousData) {
-        queryClient.setQueryData(['feature'], context.previousData);
-      }
-    },
-    onSettled: () => {
-      // 最終的に最新データを取得
-      queryClient.invalidateQueries({ queryKey: ['feature'] });
-    }
-  });
-};
-```
+### Auth機能（一元管理）
 
-### セレクターパターン
+#### なぜ一元管理か
+- アプリ全体で認証状態を参照（すべての画面）
+- ナビゲーション制御に必要
+- APIリクエストのトークン管理
 
-```typescript
-// 個別セレクター（再描画最適化）
-export const useFeatureData = () => useFeatureStore((state) => state.data);
-export const useFeatureUI = () => useFeatureStore((state) => state.ui, shallow);
-
-// 複合セレクター
-export const useSelectedFeature = () => {
-  const data = useFeatureStore((state) => state.data);
-  const selectedId = useFeatureStore((state) => state.ui.selectedId);
-  return data.find(item => item.id === selectedId);
-};
-
-// セレクターオブジェクト（再利用可能）
-export const featureSelectors = {
-  getFilteredData: (filter: Filter) => (state: FeatureState) => {
-    return state.data.filter(item => matchesFilter(item, filter));
-  },
-  isItemSelected: (id: string) => (state: FeatureState) => {
-    return state.ui.selectedId === id;
-  }
-};
-```
-
-### 一元管理のベストプラクティス
-
-1. **初期化戦略**：
-   - 永続化データの復元を優先
-   - デフォルト値へのフォールバック
-   - 初回起動時の特別処理
-
-2. **クリーンアップ**：
-   - ログアウト時の状態リセット
-   - 不要なキャッシュの削除
-   - メモリリークの防止
-
-3. **エラーハンドリング**：
-   - グレースフルデグラデーション
-   - ユーザーへの適切なフィードバック
-   - リトライ戦略
-
-4. **パフォーマンス最適化**：
-   - セレクターによる再描画制御
-   - メモ化の適切な使用
-   - バッチ更新の活用
-
----
-
-## Auth機能の状態管理詳細
-
-### アーキテクチャ構造
-
+#### 実装構造
 ```
 src/features/auth/
 ├── application/
-│   └── auth-store.ts              # Zustandストア（中央状態管理）
+│   └── auth-store.ts              # 認証状態の中央管理
 ├── domain/
 │   └── entities/
-│       └── User.ts                # ドメインエンティティ
-├── infra/
-│   └── services/
-│       ├── authService.ts         # Supabase認証サービス
-│       ├── authStateManager.ts    # 認証状態の同期管理
-│       ├── authTokenManager.ts    # トークン管理
-│       ├── authInterceptor.ts     # API認証インターセプター
-│       ├── rateLimiter.ts         # レート制限
-│       ├── sessionPersistence.ts  # セッション永続化
-│       └── sessionRestoration.ts  # セッション復元
+│       └── User.ts                # QueryUser型定義
+├── infra/services/
+│   ├── authService.ts             # Supabase認証API
+│   ├── authStateManager.ts        # 認証状態の同期管理（シングルトン）
+│   ├── authTokenManager.ts        # トークン自動更新
+│   ├── sessionPersistence.ts      # セッション永続化
+│   ├── rateLimiter.ts             # ログイン試行制限
+│   └── errorSanitizer.ts          # エラーメッセージ処理
 └── presentation/
     ├── hooks/
-    │   ├── use-auth.ts            # TanStack Query統合フック
-    │   └── use-auth-api.ts        # 認証付きAPI呼び出し
+    │   └── use-auth.ts            # 統合フック + TanStack Query
     └── providers/
-        └── AuthProvider.tsx       # 認証コンテキストプロバイダー
+        └── AuthProvider.tsx       # 初期化とセッション復元
 ```
 
-### 状態管理の特徴
+#### 特徴的な実装
 
-#### Zustandストア (auth-store.ts)
+**1. AuthStateManager（シングルトン）**
+```typescript
+// Supabaseの認証状態変更を監視し、Zustandストアと同期
+class AuthStateManager {
+  private static instance: AuthStateManager;
+  
+  async initialize(queryClient: QueryClient, restoredSession?: Session) {
+    // 認証状態変更の監視を開始
+    this.authSubscription = supabase.auth.onAuthStateChange(
+      this.handleAuthStateChange.bind(this)
+    );
+  }
+}
+```
 
-**状態の分類**:
+**2. 競合状態の防止**
 ```typescript
 interface AuthState {
-  // サーバー状態（TanStack Queryと同期）
-  user: QueryUser | null;
-  isAuthenticated: boolean;
-  
-  // 認証プロセスの状態管理（競合状態防止用）
   authProcessState: 'IDLE' | 'SIGNING_IN' | 'SIGNING_UP' | 'SIGNING_OUT';
-  
-  // UI状態（フォーム・モーダルなど）
-  ui: {
-    loginForm: { email, password, isSubmitting, errors };
-    signUpForm: { email, password, confirmPassword, isSubmitting, errors };
-    emailVerification: { email, verificationCode, isVerifying, resendCooldown, errors };
-    modals: { showPasswordReset, showEmailVerification };
-  };
-
-  // 永続化する設定
-  settings: {
-    biometricEnabled: boolean;
-    autoLoginEnabled: boolean;
-    isFirstLaunch: boolean;
-    lastLoginEmail?: string;
-  };
 }
 ```
 
-**Middleware構成**:
+**3. 複雑なフォーム管理**
 ```typescript
-create<AuthState & AuthActions>()(
-  devtools(              // 最外層：開発ツール
-    persist(             // 永続化
-      immer(             // イミュータブル更新
-        subscribeWithSelector((set) => ({...}))
-      ),
-      {
-        name: 'auth-storage',
-        storage: mmkvStorage,
-        partialize: (state) => ({ settings: state.settings })
-      }
-    ),
-    { enabled: process.env.NODE_ENV === 'development' }
-  )
-)
-```
-
-**セレクターパターン**:
-- 個別セレクター: `useAuthUser()`, `useIsAuthenticated()`
-- 複合セレクター: `useLoginForm()`, `useAuthSettings()`
-- アクションセレクター: `useAuthActions()` (全アクションを返す)
-
-#### TanStack Queryとの統合
-
-**クエリ設定**:
-```typescript
-useCurrentUserQuery: {
-  queryKey: queryKeys.auth.user(),
-  staleTime: 30 * 60 * 1000,  // 30分
-  gcTime: 60 * 60 * 1000,      // 1時間
-  refetchOnMount: false,
-  refetchOnWindowFocus: false,
-  initialData: user            // Zustandストアから初期値
+// ログインフォーム、サインアップフォーム、OTP検証をすべて管理
+ui: {
+  loginForm: { email, password, isSubmitting, errors };
+  signUpForm: { email, password, confirmPassword, isSubmitting, errors };
+  emailVerification: { email, verificationCode, isVerifying, resendCooldown };
 }
 ```
 
-**ミューテーション**:
-- `useSignInMutation`: ログイン処理
-- `useSignUpMutation`: 新規登録処理
-- `useSignOutMutation`: ログアウト処理
-- `useVerifyOTPMutation`: OTP検証
-- `useResendVerificationEmailMutation`: 確認メール再送
+### Layers機能（一元管理）
 
-### 一元管理の実装ポイント
+#### なぜ一元管理か
+- 地図画面、投稿作成画面、レイヤー管理画面で共有
+- 選択状態のリアルタイム同期が必要
+- ユーザーの選択を永続化
 
-1. **authStateManagerによる自動同期**:
-   - Supabaseの認証状態変更を監視
-   - 自動的にZustandストアを更新
-   - トークンの自動更新処理
-
-2. **競合状態の防止**:
-   - `authProcessState`で認証処理の排他制御
-   - 同時に複数の認証処理を防ぐ
-
-3. **複合フックによるビジネスロジック**:
-   - `useLoginFormHook`: レート制限、バリデーション、エラー処理
-   - `useSignUpFormHook`: パスワード強度チェック、確認処理
-   - `useEmailVerificationHook`: OTP検証、再送信クールダウン
-
-4. **セキュリティ対策**:
-   - レート制限（rateLimiter）
-   - セッションの暗号化保存（sessionPersistence）
-   - エラーメッセージのサニタイズ（errorSanitizer）
-
-## Layers機能の状態管理詳細
-
-### アーキテクチャ構造
-
+#### 実装構造
 ```
 src/features/layers/
 ├── application/
-│   └── layers-store.ts            # Zustandストア
+│   └── layers-store.ts            # レイヤー状態管理
 ├── domain/
 │   ├── entities/
 │   │   └── Layer.ts               # レイヤーエンティティ
@@ -372,355 +181,208 @@ src/features/layers/
 └── presentation/
     ├── hooks/
     │   ├── use-layers-query.ts    # TanStack Query統合
-    │   ├── useLayerSelection.ts   # レイヤー選択ロジック
-    │   └── useLayerSubscriptionExample.ts
-    ├── components/
-    │   ├── LayerSelector.tsx      # レイヤー選択UI
-    │   └── LayersDebugPanel.tsx   # デバッグパネル
+    │   └── useLayerSelection.ts   # レイヤー選択ロジック
     └── providers/
-        └── LayersProvider.tsx      # レイヤーコンテキスト
+        └── LayersProvider.tsx      # 初期データ取得と同期
 ```
 
-### 状態管理の特徴
+#### 特徴的な実装
 
-#### Zustandストア (layers-store.ts)
-
-**状態の分類**:
-```typescript
-interface LayersState {
-  // サーバー状態（将来的にTanStack Queryで管理予定）
-  availableLayers: Layer[];
-  
-  // UI状態
-  selectedLayerIds: string[];
-  isLoading: boolean;
-  error: string | null;
-  
-  // 設定（永続化対象）
-  settings: {
-    favoriteLayerIds: string[];
-    defaultLayerIds: string[];
-    showAllByDefault: boolean;
-  };
-}
-```
-
-**永続化戦略**:
+**1. 選択状態の永続化**
 ```typescript
 persist(
-  immer(subscribeWithSelector((set) => ({...}))),
+  // ...
   {
-    name: StorageKeys.LAYERS.SETTINGS,
-    storage: layersStorage,
     partialize: (state) => ({
       settings: state.settings,
-      selectedLayerIds: state.selectedLayerIds  // 選択状態も永続化
+      selectedLayerIds: state.selectedLayerIds  // 選択も永続化
     })
   }
 )
 ```
 
-**セレクターオブジェクト**:
+**2. 初期化ロジック**
 ```typescript
-export const layersSelectors = {
-  getSelectedLayers: (state) => state.availableLayers.filter(...),
-  getFavoriteLayers: (state) => state.availableLayers.filter(...),
-  isLayerSelected: (layerId) => (state) => state.selectedLayerIds.includes(layerId),
-  isLayerFavorite: (layerId) => (state) => state.settings.favoriteLayerIds.includes(layerId)
-};
-```
-
-#### TanStack Queryとの統合
-
-**レイヤー一覧取得**:
-```typescript
-useLayersQuery: {
-  queryKey: queryKeys.layer.list(),
-  staleTime: Infinity,         // レイヤーは基本的に変更されない
-  gcTime: 24 * 60 * 60 * 1000  // 24時間キャッシュ
-}
-```
-
-**楽観的更新の実装**:
-```typescript
-useCreateLayerMutation: {
-  onMutate: async (newLayer) => {
-    // 1. 既存クエリをキャンセル
-    await queryClient.cancelQueries({ queryKey: queryKeys.layer.list() });
-    
-    // 2. 楽観的更新用の一時データ作成
-    const optimisticLayer = { ...newLayer, id: `temp-${Date.now()}` };
-    
-    // 3. キャッシュを更新
-    queryClient.setQueryData(queryKeys.layer.list(), [...previousLayers, optimisticLayer]);
-    
-    // 4. ロールバック用のコンテキストを返す
-    return { previousLayers };
-  },
-  onError: (err, _, context) => {
-    // エラー時は元に戻す
-    queryClient.setQueryData(queryKeys.layer.list(), context.previousLayers);
-  },
-  onSettled: () => {
-    // 成功・失敗に関わらず最新データを取得
-    queryClient.invalidateQueries({ queryKey: queryKeys.layer.list() });
+initializeSelectedLayers: () => {
+  if (state.selectedLayerIds.length > 0) return; // 永続化データ優先
+  
+  if (state.settings.defaultLayerIds.length > 0) {
+    state.selectedLayerIds = state.settings.defaultLayerIds;
+  } else if (state.settings.showAllByDefault) {
+    state.selectedLayerIds = state.availableLayers.map(layer => layer.id);
   }
 }
 ```
 
-### 一元管理の実装ポイント
+### Location機能（一元管理）
 
-1. **初期化ロジック**:
-   ```typescript
-   initializeSelectedLayers: () => {
-     // 永続化データがある場合はスキップ
-     if (state.selectedLayerIds.length > 0) return;
-     
-     // デフォルト設定から初期化
-     if (state.settings.defaultLayerIds.length > 0) {
-       state.selectedLayerIds = state.settings.defaultLayerIds;
-     } else if (state.settings.showAllByDefault) {
-       state.selectedLayerIds = state.availableLayers.map(layer => layer.id);
-     }
-   }
-   ```
+#### なぜ一元管理か
+- 地図表示、AudioPin作成、ナビゲーションで使用
+- リアルタイムの位置情報更新が必要
+- 権限状態をアプリ全体で共有
 
-2. **データ同期**:
-   - React QueryでAPIから取得
-   - useEffectでZustandストアに同期
-   - 初回のみ選択状態を初期化
-
-3. **ユーザー設定の管理**:
-   - `useUserLayerPreferencesQuery`: ユーザー固有の設定を取得
-   - `useSaveUserLayerPreferencesMutation`: 設定の保存
-   - サーバーとローカルの設定を統合
-
-4. **楽観的更新による即座のフィードバック**:
-   - 作成・更新・削除時に即座にUIを更新
-   - エラー時は自動的にロールバック
-   - バックグラウンドで実際のデータと同期
-
-## Location機能の状態管理詳細
-
-### アーキテクチャ構造
-
+#### 実装構造
 ```
 src/features/location/
 ├── application/
-│   └── location-store.ts          # Zustandストア（中央状態管理）
+│   └── location-store.ts          # 位置情報状態管理
 ├── domain/
 │   └── entities/
-│       └── Location.ts            # 位置情報エンティティ
+│       └── Location.ts            # UserLocationData型定義
 ├── infrastructure/
 │   └── services/
-│       └── locationStateManager.ts # 位置情報状態管理サービス
+│       └── locationStateManager.ts # 位置情報監視サービス（シングルトン）
 └── presentation/
     ├── hooks/
-    │   ├── useLocation.ts         # 後方互換性用フック
-    │   └── useLocationContext.ts  # Context統合フック
+    │   ├── useLocation.ts         # 後方互換性フック
+    │   └── useLocationContext.ts  # Context統合
     └── providers/
-        └── LocationProvider.tsx   # 位置情報コンテキストプロバイダー
+        └── LocationProvider.tsx   # 権限管理と初期化
 ```
 
-### 状態管理の特徴
+#### 特徴的な実装
 
-#### Zustandストア (location-store.ts)
-
-**状態の分類**:
+**1. StableLocationの管理**
 ```typescript
+// 地図表示用の安定した位置情報
 interface LocationState {
-  // サーバー状態（将来的にサーバー連携も想定）
-  currentLocation: UserLocationData | null;  // 現在の位置情報
-  stableLocation: UserLocationData | null;   // 安定した位置情報（地図表示用）
-  
-  // UI状態
-  isLoading: boolean;
-  error: string | null;
-  isLocationEnabled: boolean;
-  isTracking: boolean;
-  
-  // 設定（永続化対象）
-  settings: {
-    locationUpdateInterval: number;     // ミリ秒単位
-    highAccuracyMode: boolean;
-    distanceFilter: number;            // メートル単位
-    headingUpdateInterval: number;     // ミリ秒単位（方向情報の更新間隔）
-    stableLocationThreshold: number;   // メートル単位（安定位置の更新閾値）
-  };
+  currentLocation: UserLocationData | null;  // リアルタイム位置
+  stableLocation: UserLocationData | null;   // 閾値以上移動時のみ更新
 }
 ```
 
-**Middleware構成**:
+**2. Heading更新のスロットリング**
 ```typescript
-create<LocationStore>()(
-  devtools(                           // 最外層：開発ツール
-    persist(                          // 永続化
-      immer(                          // イミュータブル更新
-        subscribeWithSelector((set) => ({...}))
-      ),
-      {
-        name: 'location-settings',
-        storage: mmkvStorage,
-        partialize: (state) => ({ 
-          settings: state.settings    // 設定のみ永続化
-        })
-      }
-    ),
-    { enabled: process.env.NODE_ENV === 'development' }
-  )
-)
+private headingThrottleInterval: number = 250; // 250ms
+// パフォーマンス最適化のため方向情報を制限
 ```
 
-**セレクターフック**:
-- 個別セレクター: `useCurrentLocation()`, `useStableLocation()`, `useIsLocationEnabled()`
-- UI状態セレクター: `useLocationUIState()` (shallow比較で最適化)
-- 設定セレクター: `useLocationSettings()`
-- アクションセレクター: `useLocationActions()` (全アクションを返す)
-
-#### LocationStateManager (シングルトンサービス)
-
-**特徴**:
+**3. 権限変更の自動検知**
 ```typescript
-class LocationStateManager {
-  private static instance: LocationStateManager;
-  private locationSubscription: Location.LocationSubscription | null = null;
-  private headingSubscription: Location.LocationSubscription | null = null;
-  private lastHeadingUpdate: number = 0;
-  private headingThrottleInterval: number = 250; // 250ms スロットリング
-  private errorCallback: ((error: LocationError) => void) | null = null;
-  
-  // シングルトンパターン
-  static getInstance(): LocationStateManager {
-    if (!LocationStateManager.instance) {
-      LocationStateManager.instance = new LocationStateManager();
-    }
-    return LocationStateManager.instance;
+// AppStateで設定画面から戻った時の権限変更を検知
+AppState.addEventListener('change', handleAppStateChange);
+```
+
+### Account機能（個別管理）
+
+#### なぜ個別管理か
+- プロフィール作成画面でのみ使用
+- 他機能からの依存なし
+- シンプルなフォーム管理で十分
+
+#### 実装構造
+```
+src/features/account/
+├── application/
+│   └── account-store.ts           # フォーム状態のみ管理
+├── domain/
+│   └── entities/
+│       └── Profile.ts             # プロフィールエンティティ
+├── infrastructure/
+│   └── services/
+│       └── accountService.ts      # プロフィールAPI（StateManagerなし）
+└── presentation/
+    ├── hooks/
+    │   ├── use-account.ts         # 統合フック
+    │   └── use-account-query.ts   # TanStack Query
+    └── providers/
+        └── AccountProvider.tsx    # 最小限のProvider
+```
+
+#### 特徴的な実装
+
+**1. 最小限のアクション（4つのみ）**
+```typescript
+interface AccountFormActions {
+  updateForm: (updates: Partial<ProfileCreationForm>) => void;
+  setFormError: (field: string, error?: string) => void;
+  clearFormErrors: () => void;
+  resetForm: () => void;
+}
+```
+
+**2. Blob管理の最適化**
+```typescript
+// ストアにはURIのみ保存
+avatarUri?: string;  // Blobはuse-account.ts内のuseRefで管理
+```
+
+**3. シンプルなProvider**
+```typescript
+// StateManagerなし、最小限のContext値
+interface AccountContextValue {
+  hasCompletedProfile: boolean;
+  isCheckingProfile: boolean;
+}
+```
+
+## ベストプラクティス
+
+### 1. StateManagerパターンの適切な使用
+- **必要な場合**: 外部サービスとの同期が複雑（Auth、Location）
+- **不要な場合**: シンプルなCRUD操作（Account、Layers）
+
+### 2. 永続化の戦略
+```typescript
+partialize: (state) => ({
+  settings: state.settings,  // 設定は永続化
+  // UI状態は永続化しない
+  // サーバー状態はTanStack Queryが管理
+})
+```
+
+### 3. セレクターパターン
+```typescript
+// 個別セレクター（再レンダリング最適化）
+export const useAuthUser = () => useAuthStore((state) => state.user);
+export const useIsAuthenticated = () => useAuthStore((state) => state.isAuthenticated);
+
+// アクション取得は個別に（無限ループ防止）
+const updateForm = useAccountFormStore((state) => state.updateForm);
+const setFormError = useAccountFormStore((state) => state.setFormError);
+```
+
+### 4. TanStack Queryとの連携
+```typescript
+// サーバー状態はTanStack Queryで管理
+const { data: profile } = useProfileQuery(userId);
+
+// Zustandストアへの同期は最小限に
+useEffect(() => {
+  if (data) {
+    useLayersStore.getState().setAvailableLayers(data);
   }
-}
+}, [data]);
 ```
 
-**主要機能**:
-1. **位置情報の許可管理**:
-   - 権限要求と状態確認
-   - 位置情報サービスの有効性チェック
-   - エラー時のコールバック通知
+## アンチパターン
 
-2. **位置情報の監視**:
-   - watchPositionAsyncによる継続的な位置情報取得
-   - heading（方向）情報の別途監視
-   - 250msスロットリングによるパフォーマンス最適化
+### 1. 過度な一元管理
+❌ すべての機能にStateManagerを実装
+✅ 複雑性に応じて判断
 
-3. **stableLocationの管理**:
-   - 移動距離が閾値を超えた場合のみ更新
-   - headingは常に最新値を反映
-   - 地図表示の安定性を確保
+### 2. 不適切な永続化
+❌ サーバー状態を永続化
+❌ 大きなBlobデータを永続化
+✅ 設定と必要最小限の状態のみ
 
-### 一元管理の実装ポイント
+### 3. アクションの過剰な分割
+❌ 15個の個別セッター
+✅ 統合された更新関数
 
-1. **LocationProviderによる自動初期化**:
-   ```typescript
-   useEffect(() => {
-     // エラーコールバックの設定
-     locationStateManager.setErrorCallback((error: LocationError) => {
-       // UIアラートをPresentation層で処理
-       if (error.code === 'PERMISSION_DENIED') {
-         Alert.alert('位置情報の許可', '...');
-       }
-     });
-     
-     // マウント時に位置情報サービスを初期化
-     locationStateManager.initialize();
+### 4. Contextの誤用
+❌ 頻繁に更新される値をContextに配置
+✅ 安定した値のみContext経由で提供
 
-     // クリーンアップ
-     return () => {
-       locationStateManager.cleanup();
-     };
-   }, []);
-   ```
+### 5. shallow比較の誤用
+❌ 最新のZustandで不要なshallow比較
+✅ 必要な場合のみ使用
 
-2. **AppState監視による権限変更検知**:
-   ```typescript
-   useEffect(() => {
-     const handleAppStateChange = async (nextAppState: AppStateStatus) => {
-       if (nextAppState === 'active') {
-         // フォアグラウンド復帰時に権限状態を再チェック
-         const hasPermission = await locationStateManager.requestLocationPermission();
-         
-         if (hasPermission && !isLocationEnabled) {
-           // 権限が付与された場合、サービスを初期化
-           await locationStateManager.initialize();
-         } else if (!hasPermission && isLocationEnabled) {
-           // 権限が取り消された場合、サービスを停止
-           locationStateManager.stopLocationTracking();
-         }
-       }
-     };
-     
-     appStateSubscription = AppState.addEventListener('change', handleAppStateChange);
-   }, [isLocationEnabled]);
-   ```
+## まとめ
 
-3. **パフォーマンス最適化**:
-   - **Heading更新のスロットリング**: 250ms間隔で更新を制限
-   - **Shallow比較**: useLocationUIStateで再レンダリング最小化
-   - **StableLocation**: 閾値以上の移動時のみ更新
+SoundZoneの状態管理は、機能の複雑性と使用範囲に応じて適切に設計されています：
 
-4. **エラーハンドリング戦略**:
-   - **レイヤー分離**: InfrastructureレイヤーでエラーをキャッチしPresentation層へコールバック
-   - **権限エラーの自動クリア**: 権限取得成功時にエラー状態をクリア
-   - **サービス無効化の検出**: 位置情報サービス自体の有効性も確認
+- **一元管理**: Auth、Layers、Location（グローバルな影響を持つ機能）
+- **個別管理**: Account（局所的な機能）
 
-5. **Context APIとの統合**:
-   ```typescript
-   export interface LocationContextValue {
-     location: UserLocationData | null;
-     stableLocation: UserLocationData | null;
-     errorMsg: string | null;
-     isLocationEnabled: boolean;
-     isLoading: boolean;
-     isTracking: boolean;
-     
-     // アクション
-     getCurrentLocation: () => Promise<UserLocationData | null>;
-     startLocationTracking: () => Promise<void>;
-     stopLocationTracking: () => void;
-     requestLocationPermission: () => Promise<boolean>;
-   }
-   ```
-
-6. **後方互換性の維持**:
-   - `useLocation`: 既存コードとの互換性を保つラッパーフック
-   - `useLocationContext`: 新規実装で推奨される統合フック
-
-## 各機能の詳細分析
-
-### 実装済み（一元管理）
-
-#### Auth機能 ✅
-- **理由**: アプリ全体で認証状態を参照
-- **実装**: AuthProvider + auth-store + authStateManager
-- **永続化**: 設定のみ（セキュリティを考慮）
-
-#### Layers機能 ✅
-- **理由**: 複数画面でレイヤー選択を共有
-- **実装**: LayersProvider + layers-store
-- **永続化**: 設定と選択状態
-
-#### Location機能 ✅
-- **理由**: 地図、AudioPin作成で位置情報を共有
-- **実装**: LocationProvider + location-store + locationStateManager
-- **永続化**: 設定のみ（位置情報は永続化しない）
-
-### アンチパターン
-
-1. **過度な正規化**
-   - 不必要な状態の分割
-   - 複雑なセレクターの連鎖
-
-2. **永続化の誤用**
-   - センシティブ情報の永続化
-   - 大量データの永続化
-
-3. **Context の乱用**
-   - 頻繁に更新される値の配置
-   - 巨大なContextオブジェクト
+各実装は[StateManagement.md](./StateManagement.md)の原則に従い、パフォーマンスと保守性のバランスを保っています。

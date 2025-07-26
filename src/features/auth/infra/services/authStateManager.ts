@@ -132,6 +132,13 @@ export class AuthStateManager {
     const store = useAuthStore.getState();
     
     if (session?.user) {
+      console.log('[AuthStateManager] Syncing auth state with user:', {
+        id: session.user.id,
+        email: session.user.email,
+        email_confirmed_at: session.user.email_confirmed_at,
+        user_metadata: session.user.user_metadata
+      });
+      
       // ユーザー情報を QueryUser 形式に変換
       const queryUser: QueryUser = {
         id: session.user.id,
@@ -140,6 +147,8 @@ export class AuthStateManager {
         name: session.user.user_metadata?.name || undefined,
         avatarUrl: session.user.user_metadata?.avatar_url || undefined,
       };
+
+      console.log('[AuthStateManager] Converted to QueryUser:', queryUser);
 
       // Zustand ストアを更新
       store.setUser(queryUser);

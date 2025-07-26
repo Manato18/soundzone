@@ -18,7 +18,9 @@
         "UIBackgroundModes": [
           "audio"
         ],
-        "NSMicrophoneUsageDescription": "このアプリでは音声を録音してオーディオピンを作成するためにマイクを使用します。"
+        "NSMicrophoneUsageDescription": "このアプリでは音声を録音してオーディオピンを作成するためにマイクを使用します。",
+        "NSCameraUsageDescription": "プロフィール画像を撮影するためにカメラを使用します。",
+        "NSPhotoLibraryUsageDescription": "プロフィール画像を選択するために写真ライブラリにアクセスします。"
       }
     },
     "android": {
@@ -31,7 +33,10 @@
       "permissions": [
         "RECORD_AUDIO",
         "ACCESS_FINE_LOCATION",
-        "ACCESS_COARSE_LOCATION"
+        "ACCESS_COARSE_LOCATION",
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE"
       ],
       "config": {
         "googleMaps": {
@@ -56,7 +61,14 @@
         }
       ],
       "expo-asset",
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "プロフィール画像を選択するために写真ライブラリにアクセスします。",
+          "cameraPermission": "プロフィール画像を撮影するためにカメラを使用します。"
+        }
+      ]
     ]
   }
 }

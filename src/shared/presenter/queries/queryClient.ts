@@ -71,6 +71,14 @@ export const queryKeys = {
     detail: (id: string) => 
       [...queryKeys.layer.all, 'detail', id] as const,
   },
+  // アカウント関連
+  account: {
+    all: ['account'] as const,
+    profile: (userId: string) => 
+      [...queryKeys.account.all, 'profile', userId] as const,
+    checkExists: (userId: string) => 
+      [...queryKeys.account.all, 'exists', userId] as const,
+  },
 } as const;
 
 // エラーハンドリング用のユーティリティ
