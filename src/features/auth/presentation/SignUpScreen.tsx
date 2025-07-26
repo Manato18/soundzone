@@ -34,22 +34,17 @@ export default function SignUpScreen({ navigation }: SignUpScreenProps) {
 
   // 新規登録処理（実際のアカウント作成）
   const handleSignUp = async () => {
-    // 新規登録開始前に既存セッションをクリア（安全なタイミング）
-    try {
-      await signOut();
-      console.log('Cleared existing session before new sign up');
-      
-      // セッションクリア完了後にサインアップ処理を実行
-      await new Promise(resolve => setTimeout(resolve, 300)); // 安定化のため少し待機
-      
-    } catch (error) {
-      // エラーは無視（既にサインアウト済みの場合）
-      console.log('No existing session to clear');
-    }
-    
     const result = await handleSubmit();
     
     if (result && result.success) {
+      // 成功時のみ既存セッションをクリア
+      try {
+        await signOut();
+        console.log('Cleared existing session after successful sign up');
+      } catch (error) {
+        console.log('No existing session to clear');
+      }
+      
       if (result.needsEmailVerification) {
         // メール認証が必要な場合、EmailVerificationScreenに遷移
         console.log('Navigating to EmailVerification screen for:', result.email);
@@ -64,6 +59,12 @@ export default function SignUpScreen({ navigation }: SignUpScreenProps) {
           [{ text: 'OK' }]
         );
       }
+    } else {
+      // エラーが発生した場合のログ
+      console.log('[SignUpScreen] Sign up failed:', {
+        result,
+        formErrors: form.errors,
+      });
     }
   };
 
