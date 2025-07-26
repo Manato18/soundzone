@@ -128,21 +128,24 @@ if (isAuthenticated && user?.emailVerified && !hasCompletedProfile) {
 
 ## 実装手順
 
-### Phase 1: Account機能の基盤構築（一元管理）
+### Phase 1: Account機能の基盤構築（一元管理）✅ 完了
 
-1. **account-store.ts作成**
+1. **account-store.ts作成** ✅
    - Zustandストア定義
    - middleware設定（devtools → persist → immer → subscribeWithSelector）
    - 永続化設定（settings.hasCompletedProfileのみ）
+   - 無限ループ防止対策実装
 
-2. **Profile.tsエンティティ作成**
+2. **Profile.tsエンティティ作成** ✅
    - ドメインモデル定義
    - バリデーションルール実装
+   - バリデーションヘルパーメソッド追加
 
-3. **AccountProvider.tsx作成**
+3. **AccountProvider.tsx作成** ✅
    - Auth機能との連携
-   - 初期化ロジック
+   - 初期化ロジック（useRefによる重複実行防止）
    - エラーハンドリング
+   - 無限ループ防止策（lastUserId, isInitializedフラグ）
 
 ### Phase 2: API層実装
 
@@ -277,6 +280,15 @@ if (isAuthenticated && user?.emailVerified && !hasCompletedProfile) {
 
 ## 完了条件
 
+- [x] Phase 1: 基盤構築完了
+  - [x] Zustandストア実装
+  - [x] エンティティ実装
+  - [x] Provider実装
+  - [x] 無限ループ防止対策
+- [ ] Phase 2: API層実装
+- [ ] Phase 3: TanStack Query統合
+- [ ] Phase 4: UI実装
+- [ ] Phase 5: 遷移フロー実装
 - [ ] すべての必須項目が入力できる
 - [ ] バリデーションが正しく動作する
 - [ ] 画像がアップロードできる
@@ -284,3 +296,25 @@ if (isAuthenticated && user?.emailVerified && !hasCompletedProfile) {
 - [ ] 保存後ホーム画面に遷移する
 - [ ] エラー時の適切なフィードバック
 - [ ] 一元管理による状態同期
+
+## 実装上の注意点（無限ループ防止）
+
+### 1. useEffectの依存配列
+- 必要最小限の依存のみを含める
+- オブジェクトの参照比較に注意（shallowを使用）
+- useRefで前回値を記録して重複実行を防ぐ
+
+### 2. イベントリスナー
+- 適切なクリーンアップを実装
+- 同じイベントを重複登録しない
+- unsubscribe関数を確実に呼び出す
+
+### 3. 状態更新
+- 同期的な更新を避ける
+- バッチ更新を活用
+- 条件分岐で不要な更新を防ぐ
+
+### 4. Provider間の連携
+- Auth → Accountの単方向データフロー
+- 循環参照を避ける
+- イベントベースの疎結合な設計
