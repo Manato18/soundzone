@@ -195,28 +195,93 @@ if (isAuthenticated && user?.emailVerified && !hasCompletedProfile) {
    - UI状態: Zustand
    - 自動同期メカニズム実装
 
-### Phase 4: UI実装
+### Phase 4: UI実装 ✅ 完了
 
-1. **ProfileCreationScreen.tsx作成**
-   - 3ステップフォーム（表示名 → アバター → 自己紹介）
-   - リアルタイムバリデーション
-   - 画像選択・プレビュー機能
-   - ローディング・エラー表示
+1. **react-native-image-picker設定** ✅
+   - ライブラリインストール（v5.7.0）
+   - iOS権限設定:
+     - NSCameraUsageDescription
+     - NSPhotoLibraryUsageDescription
+   - Android権限設定:
+     - android.permission.CAMERA
+     - 既存のREAD/WRITE_EXTERNAL_STORAGE
 
-2. **画像処理**
-   - react-native-image-pickerによる画像選択
-   - 画像圧縮処理（最大1MB）
-   - Supabase Storageへのアップロード
+2. **Toastコンポーネント作成** ✅
+   - シングルトンパターン実装
+   - 3種類のタイプ（success/error/info）
+   - アニメーション付き表示/非表示
+   - 自動非表示タイマー（デフォルト3秒）
+   - ToastProviderによるグローバル管理
 
-### Phase 5: 遷移フロー実装
+3. **画像圧縮ユーティリティ** ✅
+   - imageCompressor.ts作成
+   - 最大サイズ: 1024x1024
+   - 品質: 80%
+   - uriToBlob変換機能
+   - MIMEタイプ判定
 
-1. **RootNavigator修正**
-   - hasCompletedProfile判定追加
-   - ProfileCreationNavigator追加
+4. **ProfileCreationScreen.tsx作成** ✅
+   - 1画面にすべての入力項目表示（ユーザー要望に基づく）
+   - 実装機能:
+     - アバター画像選択（カメラ/ギャラリー）
+     - アップロード進捗表示（パーセンテージ）
+     - リアルタイムバリデーション
+     - 文字数カウント表示
+     - キーボード回避処理
+   - UX改善:
+     - ローディング中のボタン無効化
+     - エラー時の入力欄ハイライト
+     - 成功時の自動画面遷移
+     - トーストによるフィードバック
 
-2. **Auth連携**
-   - メール認証完了時のイベント通知
-   - AccountProviderでの受信処理
+### Phase 5: 遷移フロー実装（詳細計画）
+
+#### 1. **App.tsxの修正**
+   - ToastProviderの追加
+   - AccountProviderの追加
+   - Providerの正しい順序設定
+
+#### 2. **RootNavigator.tsxの修正**
+   - 現在の遷移ロジック:
+     ```
+     認証済み && メール確認済み → AppNavigator
+     それ以外 → AuthNavigator
+     ```
+   - 新しい遷移ロジック:
+     ```
+     認証済み && メール確認済み && プロフィール作成済み → AppNavigator
+     認証済み && メール確認済み && プロフィール未作成 → ProfileCreationScreen
+     それ以外 → AuthNavigator
+     ```
+   - 必要な実装:
+     - useAccountフックのインポート
+     - hasCompletedProfile状態の取得
+     - isCheckingProfile中のローディング表示
+     - ProfileCreationScreenの条件分岐追加
+
+#### 3. **ProfileCreationNavigator作成**
+   - Stack.Navigatorの作成
+   - ProfileCreationScreenの登録
+   - ヘッダー非表示設定
+
+#### 4. **Auth → Account連携の確認**
+   - メール認証完了後の動作フロー:
+     1. EmailVerificationScreen → 認証成功
+     2. AuthStateManager → 認証状態更新
+     3. RootNavigator → 再評価
+     4. AccountProvider → プロフィール存在確認
+     5. プロフィール未作成 → ProfileCreationScreen表示
+
+#### 5. **成功後の遷移処理**
+   - ProfileCreationScreen → プロフィール作成成功
+   - accountStateManager → hasCompletedProfile更新
+   - RootNavigator → 自動的にAppNavigatorへ遷移
+
+#### 6. **エッジケースの対応**
+   - ネットワークエラー時の処理
+   - プロフィール確認中のローディング表示
+   - タイムアウト処理
+   - リトライ機能
 
 ## バリデーションルール
 
@@ -315,7 +380,13 @@ if (isAuthenticated && user?.emailVerified && !hasCompletedProfile) {
   - [x] use-account.ts（3つの統合フック）
   - [x] queryClient更新（accountキー追加）
   - [x] 無限ループ防止（enabled条件、適切な依存配列）
-- [ ] Phase 4: UI実装
+- [x] Phase 4: UI実装
+  - [x] react-native-image-picker設定（iOS/Android権限）
+  - [x] Toastコンポーネント（シングルトンパターン）
+  - [x] 画像圧縮ユーティリティ
+  - [x] ProfileCreationScreen（1画面フォーム）
+  - [x] リアルタイムバリデーション
+  - [x] アップロード進捗表示
 - [ ] Phase 5: 遷移フロー実装
 - [ ] すべての必須項目が入力できる
 - [ ] バリデーションが正しく動作する
@@ -409,43 +480,69 @@ if (isAuthenticated && user?.emailVerified && !hasCompletedProfile) {
 └─────────────────┘
 ```
 
-## Phase 3で実装した統合フックの詳細
+## Phase 4で実装したUI詳細
 
-### 1. useAccount（メインフック）
-- プロフィール状態の統合管理
-- ローディング・エラー状態の提供
-- refetch機能の提供
+### 1. ProfileCreationScreenの実装詳細
+- **レイアウト**: ScrollView内に全項目を配置（1画面完結型）
+- **アバター選択**: 
+  - 未選択時: カメラ/ギャラリーボタン表示
+  - 選択済み: タップで再選択可能
+  - アップロード中: 進捗パーセンテージ表示
+- **フォーム制御**:
+  - 必須項目が揃うまで作成ボタン無効化
+  - 処理中は全入力を無効化
+  - エラー時は該当フィールドを赤枠表示
 
-### 2. useProfileCreationFormHook（フォーム管理）
-- **バリデーション**: displayName, bio, avatar
-- **アバター管理**: 選択、アップロード、プレビュー
-- **プロフィール作成**: 全体の作成フロー管理
-- **クリーンアップ**: メモリリーク防止
+### 2. 画像処理フロー
+```
+1. 画像選択（カメラ/ギャラリー）
+   ↓
+2. サイズチェック（5MB以下）
+   ↓
+3. 自動圧縮（1024x1024, 80%品質）
+   ↓
+4. Blob変換
+   ↓
+5. Supabase Storageアップロード
+   ↓
+6. URL取得・表示
+```
 
-### 3. useProfileEditHook（将来用）
-- プロフィール更新機能
-- 楽観的更新の実装済み
+### 3. トースト通知パターン
+- **成功**: 緑色、チェックマークアイコン
+- **エラー**: 赤色、アラートアイコン
+- **情報**: 青色、インフォアイコン
+- 表示位置: 画面上部（iOS: top:50, Android: top:30）
 
-## 次のフェーズ（Phase 4）の準備
+## Phase 5の実装順序
 
-### UI実装で必要な考慮事項
+### Step 1: Provider設定
+1. App.tsxにToastProvider追加
+2. App.tsxにAccountProvider追加
+3. Provider階層の確認
 
-1. **画像選択ライブラリ**
-   - react-native-image-pickerの設定
-   - パーミッション処理
-   - 画像圧縮処理
+### Step 2: Navigator実装
+1. ProfileCreationNavigator作成
+2. RootNavigatorの条件分岐追加
+3. ローディング処理の実装
 
-2. **フォームUI設計**
-   - 3ステップフォーム vs 1画面フォーム
-   - プログレス表示
-   - エラー表示方法
+### Step 3: 動作確認項目
+- [ ] 新規登録 → メール認証 → プロフィール作成画面
+- [ ] プロフィール作成 → ホーム画面遷移
+- [ ] アプリ再起動時の画面振り分け
+- [ ] エラー時のリトライ機能
 
-3. **ローディング状態**
-   - 画像アップロード進捗
-   - プロフィール作成中の表示
-   - 成功時の遷移アニメーション
+## 技術的な注意点
 
-4. **アクセシビリティ**
-   - キーボード対応
-   - スクリーンリーダー対応
-   - エラーアナウンス
+### 無限ループ防止策（Phase 5）
+1. **RootNavigatorでの対策**
+   - useEffectの依存配列を最小限に
+   - 状態変更の条件を厳密に
+
+2. **Provider間の連携**
+   - Auth → Account の単方向フロー維持
+   - 循環参照の回避
+
+3. **非同期処理の管理**
+   - プロフィール確認中の状態管理
+   - タイムアウト処理の実装
