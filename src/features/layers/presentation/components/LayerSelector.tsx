@@ -5,42 +5,46 @@ import { Layer } from '../../domain/entities/Layer';
 
 interface LayerSelectorProps {
   layers: Layer[];
+  selectedLayerIds: string[];
   onLayerToggle: (layerId: string) => void;
 }
 
-export const LayerSelector: React.FC<LayerSelectorProps> = ({ layers, onLayerToggle }) => {
+export const LayerSelector: React.FC<LayerSelectorProps> = ({ layers, selectedLayerIds, onLayerToggle }) => {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>レイヤー</Text>
-      {layers.map((layer) => (
-        <TouchableOpacity
-          key={layer.id}
-          style={[
-            styles.layerItem,
-            layer.isSelected && { backgroundColor: '#E8E8E8' }
-          ]}
-          onPress={() => onLayerToggle(layer.id)}
-          activeOpacity={0.7}
-        >
+      {layers.map((layer) => {
+        const isSelected = selectedLayerIds.includes(layer.id);
+        return (
+          <TouchableOpacity
+            key={layer.id}
+            style={[
+              styles.layerItem,
+              isSelected && { backgroundColor: '#E8E8E8' }
+            ]}
+            onPress={() => onLayerToggle(layer.id)}
+            activeOpacity={0.7}
+          >
           <View style={styles.layerContent}>
-            <Ionicons
-              name={layer.icon as any}
-              size={20}
-              color={layer.isSelected ? layer.color : '#666'}
-              style={styles.icon}
-            />
-            <Text style={[
-              styles.layerName,
-              layer.isSelected && { color: layer.color, fontWeight: '600' }
-            ]}>
-              {layer.name}
-            </Text>
+              <Ionicons
+                name={layer.icon as any}
+                size={20}
+                color={isSelected ? layer.color : '#666'}
+                style={styles.icon}
+              />
+              <Text style={[
+                styles.layerName,
+                isSelected && { color: layer.color, fontWeight: '600' }
+              ]}>
+                {layer.name}
+              </Text>
           </View>
-          {layer.isSelected && (
-            <View style={[styles.selectedIndicator, { backgroundColor: layer.color }]} />
-          )}
-        </TouchableOpacity>
-      ))}
+            {isSelected && (
+              <View style={[styles.selectedIndicator, { backgroundColor: layer.color }]} />
+            )}
+          </TouchableOpacity>
+        );
+      })}
     </View>
   );
 };

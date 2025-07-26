@@ -15,7 +15,9 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.anonymous.soundzone",
       "infoPlist": {
-        "UIBackgroundModes": ["audio"],
+        "UIBackgroundModes": [
+          "audio"
+        ],
         "NSMicrophoneUsageDescription": "このアプリでは音声を録音してオーディオピンを作成するためにマイクを使用します。"
       }
     },
@@ -53,7 +55,8 @@
           "backgroundColor": "#ffffff"
         }
       ],
-      "expo-asset"
+      "expo-asset",
+      "expo-secure-store"
     ]
   }
 }

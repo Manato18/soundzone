@@ -1,7 +1,8 @@
 import { useMutation, UseMutationOptions, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { queryKeys } from '../../../../shared/presenter/queries/queryClient';
 import {
+  useAuthProcessState,
   useAuthSettings,
   useAuthUser,
   useClearEmailVerificationForm,
@@ -13,13 +14,14 @@ import {
   useIsAuthenticated,
   useLoginForm,
   useReset,
+  useSetAuthProcessState,
+  useSetEmailVerificationEmail,
   useSetLastLoginEmail,
   useSetLoginError,
   useSetLoginSubmitting,
   useSetResending,
   useSetSignUpError,
   useSetSignUpSubmitting,
-  useSetUser,
   useSetVerificationCode,
   useSetVerificationError,
   useSetVerificationSubmitting,
@@ -30,33 +32,30 @@ import {
   useUpdateSignUpForm,
 } from '../../application/auth-store';
 import { QueryUser } from '../../domain/entities/User';
-import { AuthResult, authService, SignUpResult } from '../../infrastructure/auth-service';
+import { AuthResult, authService, SignUpResult } from '../../infra/services/authService';
+import { rateLimiter } from '../../infra/services/rateLimiter';
 
 // Presentation Layer: UI向けのHookと TanStack Query
 
 // === クエリ ===
 export const useCurrentUserQuery = () => {
-  const setUser = useSetUser();
+  const user = useAuthUser();
   
   const query = useQuery({
     queryKey: queryKeys.auth.user(),
     queryFn: async () => {
-      const user = await authService.getCurrentUser();
-      setUser(user);
-      return user;
+      // authStateManagerが管理するため、ここでは現在のユーザー情報を返すだけ
+      const currentUser = await authService.getCurrentUser();
+      return currentUser;
     },
-    staleTime: 5 * 60 * 1000, // 5分キャッシュ
-    refetchOnMount: true,
+    // authStateManagerが状態を管理するため、キャッシュを長めに設定
+    staleTime: 30 * 60 * 1000, // 30分
+    gcTime: 60 * 60 * 1000, // 1時間
+    refetchOnMount: false,
     refetchOnWindowFocus: false,
+    // 初期データとしてZustandストアの値を使用
+    initialData: user,
   });
-
-  // エラーハンドリングはuseEffectで処理
-  useEffect(() => {
-    if (query.error) {
-      console.error('Failed to fetch current user:', query.error);
-      setUser(null);
-    }
-  }, [query.error, setUser]);
 
   return query;
 };
@@ -65,8 +64,6 @@ export const useCurrentUserQuery = () => {
 export const useSignInMutation = (
   options?: Omit<UseMutationOptions<AuthResult<QueryUser>, Error, { email: string; password: string }>, 'mutationFn'>
 ) => {
-  const queryClient = useQueryClient();
-  const setUser = useSetUser();
   const setLastLoginEmail = useSetLastLoginEmail();
 
   return useMutation({
@@ -74,14 +71,9 @@ export const useSignInMutation = (
       const result = await authService.signIn(email, password);
       
       if (result.success && result.data) {
-        setUser(result.data);
+        // authStateManagerがSupabaseの認証状態変更を検知して自動的に状態を同期するため、
+        // ここでは最後のログインメールのみを保存
         setLastLoginEmail(result.data.email);
-        queryClient.setQueryData(queryKeys.auth.user(), result.data);
-        
-        // 認証後に関連するクエリを再フェッチ
-        queryClient.invalidateQueries({ 
-          predicate: (query) => query.queryKey[0] !== 'auth' 
-        });
       }
       
       return result;
@@ -96,20 +88,12 @@ export const useSignInMutation = (
 export const useSignUpMutation = (
   options?: Omit<UseMutationOptions<SignUpResult, Error, { email: string; password: string }>, 'mutationFn'>
 ) => {
-  const queryClient = useQueryClient();
-  const setUser = useSetUser();
-
   return useMutation({
     mutationFn: async ({ email, password }: { email: string; password: string }) => {
       const result = await authService.signUp(email, password);
       
-      if (result.success && result.data) {
-        if (!result.needsEmailVerification) {
-          // メール認証不要の場合は即座にログイン状態に
-          setUser(result.data);
-          queryClient.setQueryData(queryKeys.auth.user(), result.data);
-        }
-      }
+      // authStateManagerがSupabaseの認証状態変更を検知して自動的に状態を同期するため、
+      // ここでは結果を返すのみ
       
       return result;
     },
@@ -123,25 +107,11 @@ export const useSignUpMutation = (
 export const useSignOutMutation = (
   options?: Omit<UseMutationOptions<void, Error, void>, 'mutationFn'>
 ) => {
-  const queryClient = useQueryClient();
-  const reset = useReset();
-
   return useMutation({
     mutationFn: async () => {
       await authService.signOut();
-    },
-    onSuccess: () => {
-      // 状態をリセット
-      reset();
-      
-      // キャッシュをクリア
-      queryClient.setQueryData(queryKeys.auth.user(), null);
-      queryClient.removeQueries({ queryKey: queryKeys.auth.all });
-      
-      // 認証関連以外のクエリも無効化
-      queryClient.invalidateQueries({ 
-        predicate: (query) => query.queryKey[0] !== 'auth' 
-      });
+      // authStateManagerがSupabaseの認証状態変更を検知して自動的に状態をクリアするため、
+      // ここではサインアウト処理のみ
     },
     onError: (error) => {
       console.error('Sign out error:', error);
@@ -153,18 +123,12 @@ export const useSignOutMutation = (
 export const useVerifyOTPMutation = (
   options?: Omit<UseMutationOptions<AuthResult<QueryUser>, Error, { email: string; token: string; type: 'signup' | 'email' | 'recovery' }>, 'mutationFn'>
 ) => {
-  const queryClient = useQueryClient();
-  const setUser = useSetUser();
-
   return useMutation({
     mutationFn: async ({ email, token, type }) => {
       const result = await authService.verifyOTP(email, token, type);
       
-      if (result.success && result.data) {
-        setUser(result.data);
-        queryClient.setQueryData(queryKeys.auth.user(), result.data);
-        await queryClient.invalidateQueries({ queryKey: queryKeys.auth.user() });
-      }
+      // authStateManagerがSupabaseの認証状態変更を検知して自動的に状態を同期するため、
+      // ここでは結果を返すのみ
       
       return result;
     },
@@ -210,6 +174,8 @@ export const useAuth = () => {
   const user = useAuthUser();
   const isAuthenticated = useIsAuthenticated();
   const settings = useAuthSettings();
+  const authProcessState = useAuthProcessState();
+  const setAuthProcessState = useSetAuthProcessState();
   const { isLoading } = useCurrentUserQuery();
   const reset = useReset();
   const queryClient = useQueryClient();
@@ -244,20 +210,24 @@ export const useAuth = () => {
   }, [signUpMutation]);
 
   const signOut = useCallback(async () => {
+    // 認証プロセスの状態チェック
+    if (authProcessState !== 'IDLE') {
+      console.warn(`Signout attempt blocked: current state is ${authProcessState}`);
+      return;
+    }
+
+    setAuthProcessState('SIGNING_OUT');
+
     try {
       await signOutMutation.mutateAsync();
+      // authStateManagerが自動的に状態をクリアするため、追加の処理は不要
     } catch (error) {
       console.error('Sign out error:', error);
-      // サインアウトは失敗してもローカル状態をクリアする
-      // フォールバックとして手動でリセット処理を実行
-      reset();
-      queryClient.setQueryData(queryKeys.auth.user(), null);
-      queryClient.removeQueries({ queryKey: queryKeys.auth.all });
-      queryClient.invalidateQueries({ 
-        predicate: (query) => query.queryKey[0] !== 'auth' 
-      });
+      // エラーが発生してもauthStateManagerがクリーンアップを行う
+    } finally {
+      setAuthProcessState('IDLE');
     }
-  }, [signOutMutation, reset, queryClient]);
+  }, [authProcessState, setAuthProcessState, signOutMutation]);
 
   return {
     // 状態
@@ -291,7 +261,14 @@ export const useLoginFormHook = () => {
   const setLoginError = useSetLoginError();
   const clearLoginForm = useClearLoginForm();
   const setLoginSubmitting = useSetLoginSubmitting();
+  const authProcessState = useAuthProcessState();
+  const setAuthProcessState = useSetAuthProcessState();
   const signInMutation = useSignInMutation();
+  
+  // レート制限の状態
+  const [remainingAttempts, setRemainingAttempts] = useState<number | null>(null);
+  const [lockoutTime, setLockoutTime] = useState<Date | null>(null);
+  const [waitTime, setWaitTime] = useState<number>(0);
 
   // 初回マウント時に最後のログインメールを設定
   const hasSetInitialEmail = useRef(false);
@@ -302,7 +279,32 @@ export const useLoginFormHook = () => {
     }
   }, [settings.lastLoginEmail, updateLoginForm]);
 
+  // ロックアウトのカウントダウンタイマー
+  useEffect(() => {
+    if (!lockoutTime) return;
+    
+    const timer = setInterval(() => {
+      const remaining = rateLimiter.getTimeUntilUnlock(form.email);
+      if (remaining <= 0) {
+        setLockoutTime(null);
+        setWaitTime(0);
+        clearInterval(timer);
+      } else {
+        setWaitTime(Math.ceil(remaining / 1000)); // 秒単位で更新
+      }
+    }, 1000);
+    
+    return () => clearInterval(timer);
+  }, [lockoutTime, form.email]);
+
   const handleSubmit = useCallback(async () => {
+    // 認証プロセスの状態チェック
+    if (authProcessState !== 'IDLE') {
+      console.warn(`Login attempt blocked: current state is ${authProcessState}`);
+      setLoginError('general', '認証処理中です。しばらくお待ちください。');
+      return { success: false };
+    }
+
     // バリデーション
     if (!form.email.trim()) {
       setLoginError('email', 'メールアドレスを入力してください');
@@ -321,7 +323,23 @@ export const useLoginFormHook = () => {
       return { success: false };
     }
 
+    // レート制限チェック
+    const rateLimit = await rateLimiter.checkAndRecordAttempt(form.email);
+    
+    if (!rateLimit.allowed) {
+      if (rateLimit.lockedUntil) {
+        setLockoutTime(rateLimit.lockedUntil);
+        setWaitTime(Math.ceil((rateLimit.waitTimeMs || 0) / 1000));
+        setLoginError('general', `ログイン試行回数が上限に達しました。${Math.ceil((rateLimit.waitTimeMs || 0) / 60000)}分後に再度お試しください。`);
+      } else if (rateLimit.waitTimeMs) {
+        setLoginError('general', `${Math.ceil(rateLimit.waitTimeMs / 1000)}秒後に再度お試しください。`);
+      }
+      return { success: false };
+    }
+    
+    setRemainingAttempts(rateLimit.remainingAttempts || null);
     setLoginSubmitting(true);
+    setAuthProcessState('SIGNING_IN');
     
     try {
       const result = await signInMutation.mutateAsync({ 
@@ -331,9 +349,18 @@ export const useLoginFormHook = () => {
       
       if (!result.success) {
         setLoginError('general', result.error || 'ログインに失敗しました');
+        
+        // 失敗時に残り試行回数を更新
+        const updatedLimit = await rateLimiter.checkAndRecordAttempt(form.email);
+        if (updatedLimit.remainingAttempts !== undefined) {
+          setRemainingAttempts(updatedLimit.remainingAttempts);
+        }
+        
         return { success: false };
       }
       
+      // 成功時はレート制限をクリア
+      rateLimiter.clearAttempts(form.email);
       clearLoginForm();
       return { success: true };
     } catch (error) {
@@ -342,16 +369,26 @@ export const useLoginFormHook = () => {
       return { success: false };
     } finally {
       setLoginSubmitting(false);
+      setAuthProcessState('IDLE');
     }
-  }, [form.email, form.password, signInMutation, setLoginError, setLoginSubmitting, clearLoginForm]);
+  }, [form.email, form.password, authProcessState, signInMutation, setLoginError, setLoginSubmitting, setAuthProcessState, clearLoginForm]);
 
   return {
     form,
-    updateEmail: (email: string) => updateLoginForm({ email }),
+    updateEmail: (email: string) => {
+      updateLoginForm({ email });
+      // メールアドレスが変更されたらレート制限情報をリセット
+      setRemainingAttempts(null);
+      setLockoutTime(null);
+      setWaitTime(0);
+    },
     updatePassword: (password: string) => updateLoginForm({ password }),
     handleSubmit,
     clearForm: clearLoginForm,
-    isSubmitting: form.isSubmitting || signInMutation.isPending,
+    isSubmitting: form.isSubmitting || signInMutation.isPending || authProcessState !== 'IDLE',
+    remainingAttempts,
+    isLocked: !!lockoutTime,
+    lockoutTimeRemaining: waitTime,
   };
 };
 
@@ -362,11 +399,20 @@ export const useSignUpFormHook = () => {
   const setSignUpError = useSetSignUpError();
   const clearSignUpForm = useClearSignUpForm();
   const setSignUpSubmitting = useSetSignUpSubmitting();
+  const authProcessState = useAuthProcessState();
+  const setAuthProcessState = useSetAuthProcessState();
   const showEmailVerificationModal = useShowEmailVerificationModal();
   const startResendCooldown = useStartResendCooldown();
   const signUpMutation = useSignUpMutation();
 
   const handleSubmit = useCallback(async () => {
+    // 認証プロセスの状態チェック
+    if (authProcessState !== 'IDLE') {
+      console.warn(`Signup attempt blocked: current state is ${authProcessState}`);
+      setSignUpError('general', '認証処理中です。しばらくお待ちください。');
+      return { success: false };
+    }
+
     // バリデーション
     if (!form.email.trim()) {
       setSignUpError('email', 'メールアドレスを入力してください');
@@ -405,6 +451,7 @@ export const useSignUpFormHook = () => {
     }
 
     setSignUpSubmitting(true);
+    setAuthProcessState('SIGNING_UP');
     
     try {
       const result = await signUpMutation.mutateAsync({ 
@@ -436,8 +483,9 @@ export const useSignUpFormHook = () => {
       return { success: false };
     } finally {
       setSignUpSubmitting(false);
+      setAuthProcessState('IDLE');
     }
-  }, [form.email, form.password, form.confirmPassword, signUpMutation, setSignUpError, setSignUpSubmitting, clearSignUpForm, showEmailVerificationModal, startResendCooldown]);
+  }, [form.email, form.password, form.confirmPassword, authProcessState, signUpMutation, setSignUpError, setSignUpSubmitting, setAuthProcessState, clearSignUpForm, showEmailVerificationModal, startResendCooldown]);
 
   return {
     form,
@@ -446,7 +494,7 @@ export const useSignUpFormHook = () => {
     updateConfirmPassword: (confirmPassword: string) => updateSignUpForm({ confirmPassword }),
     handleSubmit,
     clearForm: clearSignUpForm,
-    isSubmitting: form.isSubmitting || signUpMutation.isPending,
+    isSubmitting: form.isSubmitting || signUpMutation.isPending || authProcessState !== 'IDLE',
   };
 };
 
@@ -461,6 +509,7 @@ export const useEmailVerificationHook = () => {
   const setResending = useSetResending();
   const startResendCooldown = useStartResendCooldown();
   const setVerificationCode = useSetVerificationCode();
+  const setEmailVerificationEmail = useSetEmailVerificationEmail();
   const verifyOTPMutation = useVerifyOTPMutation();
   const resendEmailMutation = useResendVerificationEmailMutation();
 
@@ -541,6 +590,12 @@ export const useEmailVerificationHook = () => {
     }
   }, [verification.email, verification.resendCooldown, resendEmailMutation, setResending, startResendCooldown, setVerificationError]);
 
+  // メールアドレス設定とクールダウン開始
+  const setEmailAndStartCooldown = useCallback((email: string) => {
+    setEmailVerificationEmail(email);
+    startResendCooldown();
+  }, [setEmailVerificationEmail, startResendCooldown]);
+
   return {
     verification,
     verifyOTP,
@@ -552,5 +607,6 @@ export const useEmailVerificationHook = () => {
     },
     isVerifying: verification.isVerifying || verifyOTPMutation.isPending,
     isResending: verification.isResending || resendEmailMutation.isPending,
+    setEmailAndStartCooldown,
   };
 };

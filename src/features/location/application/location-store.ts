@@ -1,7 +1,8 @@
 import { create } from 'zustand';
 import { devtools, persist, subscribeWithSelector } from 'zustand/middleware';
 import { immer } from 'zustand/middleware/immer';
-import { storage } from '../../../shared/infra/storage/mmkvStorage';
+import { shallow } from 'zustand/shallow';
+import { mmkvStorage } from '../../../shared/infra/storage/mmkvStorage';
 import { LocationError, UserLocationData } from '../domain/entities/Location';
 
 /**
@@ -12,6 +13,7 @@ export interface LocationState {
   // ========== サーバー状態 ==========
   // （現在はローカルの位置情報APIを使用しているが、将来的にサーバー連携も想定）
   currentLocation: UserLocationData | null;
+  stableLocation: UserLocationData | null; // 安定した位置情報（地図表示用）
   
   // ========== UI状態 ==========
   isLoading: boolean;
@@ -25,6 +27,7 @@ export interface LocationState {
     highAccuracyMode: boolean;
     distanceFilter: number; // メートル単位
     headingUpdateInterval: number; // ミリ秒単位（方向情報の更新間隔）
+    stableLocationThreshold: number; // メートル単位（安定位置の更新閾値）
   };
 }
 
@@ -34,7 +37,9 @@ export interface LocationState {
 export interface LocationActions {
   // 位置情報の更新
   setCurrentLocation: (location: UserLocationData | null) => void;
+  setStableLocation: (location: UserLocationData | null) => void;
   updateHeading: (heading: number | null) => void;
+  updateStableLocationIfNeeded: (newLocation: UserLocationData) => void;
   
   // UI状態の更新
   setIsLoading: (isLoading: boolean) => void;
@@ -60,6 +65,7 @@ export interface LocationActions {
 export const initialLocationState: LocationState = {
   // サーバー状態
   currentLocation: null,
+  stableLocation: null,
   
   // UI状態
   isLoading: false,
@@ -69,10 +75,11 @@ export const initialLocationState: LocationState = {
   
   // 設定（デフォルト値）
   settings: {
-    locationUpdateInterval: 2000, // 2秒
+    locationUpdateInterval: 1000, // 1秒（バランス重視設定）
     highAccuracyMode: true,
-    distanceFilter: 5, // 5メートル
+    distanceFilter: 2, // 2メートル（よりスムーズな動き）
     headingUpdateInterval: 100, // 100ミリ秒（0.1秒）
+    stableLocationThreshold: 3, // 3メートル（より頻繁な地図更新）
   },
 };
 
@@ -98,10 +105,44 @@ export const useLocationStore = create<LocationStore>()(
           state.currentLocation = location;
         }),
 
+        // 安定した位置情報の設定
+        setStableLocation: (location) => set((state) => {
+          state.stableLocation = location;
+        }),
+
         // 方向情報のみ更新（nullの場合は前の値を保持）
         updateHeading: (heading) => set((state) => {
           if (state.currentLocation && heading !== null) {
             state.currentLocation.coords.heading = heading;
+          }
+          // stableLocationにも反映
+          if (state.stableLocation && heading !== null) {
+            state.stableLocation.coords.heading = heading;
+          }
+        }),
+
+        // 安定した位置情報の条件付き更新
+        updateStableLocationIfNeeded: (newLocation) => set((state) => {
+          if (!state.stableLocation) {
+            // 初回は必ず設定
+            state.stableLocation = newLocation;
+            return;
+          }
+
+          // 現在の安定位置からの距離を計算
+          const distance = Math.sqrt(
+            Math.pow(newLocation.coords.latitude - state.stableLocation.coords.latitude, 2) +
+            Math.pow(newLocation.coords.longitude - state.stableLocation.coords.longitude, 2)
+          ) * 111111; // 緯度経度を概算メートルに変換
+
+          // 閾値を超えた場合のみ更新
+          if (distance > state.settings.stableLocationThreshold) {
+            state.stableLocation = newLocation;
+          } else {
+            // 位置は更新しないが、headingは常に最新を反映
+            if (newLocation.coords.heading !== null) {
+              state.stableLocation.coords.heading = newLocation.coords.heading;
+            }
           }
         }),
 
@@ -156,18 +197,7 @@ export const useLocationStore = create<LocationStore>()(
       ),
       {
         name: 'location-settings',
-        storage: {
-          getItem: (name) => {
-            const value = storage.getString(name);
-            return value ? JSON.parse(value) : null;
-          },
-          setItem: (name, value) => {
-            storage.set(name, JSON.stringify(value));
-          },
-          removeItem: (name) => {
-            storage.delete(name);
-          },
-        },
+        storage: mmkvStorage,
         // 永続化対象：設定のみ（StateManagement.mdの規約に従う）
         partialize: (state) => ({
           settings: state.settings,
@@ -191,21 +221,25 @@ export const useCurrentLocation = () =>
   useLocationStore((state) => state.currentLocation);
 
 /**
- * 位置情報関連のUI状態を取得
+ * 安定した位置情報を取得（地図表示用）
  */
-export const useLocationUIState = () => {
-  const isLoading = useLocationStore((state) => state.isLoading);
-  const error = useLocationStore((state) => state.error);
-  const isLocationEnabled = useLocationStore((state) => state.isLocationEnabled);
-  const isTracking = useLocationStore((state) => state.isTracking);
-  
-  return {
-    isLoading,
-    error,
-    isLocationEnabled,
-    isTracking,
-  };
-};
+export const useStableLocation = () => 
+  useLocationStore((state) => state.stableLocation);
+
+/**
+ * 位置情報関連のUI状態を取得
+ * shallow比較を使用して再描画を最小化
+ */
+export const useLocationUIState = () => 
+  useLocationStore(
+    (state) => ({
+      isLoading: state.isLoading,
+      error: state.error,
+      isLocationEnabled: state.isLocationEnabled,
+      isTracking: state.isTracking,
+    }),
+    shallow
+  );
 
 /**
  * 位置情報設定を取得
@@ -242,6 +276,9 @@ export const useIsLocationTracking = () =>
  */
 export const useLocationActions = () => {
   const setCurrentLocation = useLocationStore((state) => state.setCurrentLocation);
+  const setStableLocation = useLocationStore((state) => state.setStableLocation);
+  const updateHeading = useLocationStore((state) => state.updateHeading);
+  const updateStableLocationIfNeeded = useLocationStore((state) => state.updateStableLocationIfNeeded);
   const setIsLoading = useLocationStore((state) => state.setIsLoading);
   const setError = useLocationStore((state) => state.setError);
   const setIsLocationEnabled = useLocationStore((state) => state.setIsLocationEnabled);
@@ -254,6 +291,9 @@ export const useLocationActions = () => {
   
   return {
     setCurrentLocation,
+    setStableLocation,
+    updateHeading,
+    updateStableLocationIfNeeded,
     setIsLoading,
     setError,
     setIsLocationEnabled,

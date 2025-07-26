@@ -1,12 +1,9 @@
-import { MMKV } from 'react-native-mmkv';
 import { create } from 'zustand';
 import { createJSONStorage, devtools, persist, subscribeWithSelector } from 'zustand/middleware';
 import { immer } from 'zustand/middleware/immer';
 import { StorageKeys } from '../../../constants/StorageKeys';
 import { Layer } from '../domain/entities/Layer';
-
-// MMKV インスタンス
-const storage = new MMKV({ id: 'layers-storage' });
+import { mmkvStorage } from '../../../shared/infra/storage/mmkvStorage';
 
 // Zustand ストアの状態定義
 interface LayersState {
@@ -65,18 +62,7 @@ type PersistedState = {
 };
 
 // MMKV ストレージアダプター
-const mmkvStorage = createJSONStorage<PersistedState>(() => ({
-  getItem: (name: string) => {
-    const value = storage.getString(name);
-    return value ? JSON.parse(value) : null;
-  },
-  setItem: (name: string, value: unknown) => {
-    storage.set(name, JSON.stringify(value));
-  },
-  removeItem: (name: string) => {
-    storage.delete(name);
-  },
-}));
+const layersStorage = createJSONStorage<PersistedState>(() => mmkvStorage);
 
 // Zustand ストア
 export const useLayersStore = create<LayersStore>()(
@@ -151,11 +137,25 @@ export const useLayersStore = create<LayersStore>()(
           }),
           
           initializeSelectedLayers: () => set((state) => {
-            // デフォルトレイヤーIDがある場合はそれを使用、なければ全レイヤーを選択
+            // 既に選択されたレイヤーがある場合（永続化データから復元された場合）はスキップ
+            if (state.selectedLayerIds.length > 0) {
+              if (process.env.NODE_ENV === 'development') {
+                console.log('[layers-store] Skip initialization - already have selected layers:', state.selectedLayerIds);
+              }
+              return;
+            }
+            
+            // 初回起動時のみ初期化
             if (state.settings.defaultLayerIds.length > 0) {
               state.selectedLayerIds = state.settings.defaultLayerIds;
+              if (process.env.NODE_ENV === 'development') {
+                console.log('[layers-store] Initialized with default layers:', state.settings.defaultLayerIds);
+              }
             } else if (state.settings.showAllByDefault) {
               state.selectedLayerIds = state.availableLayers.map(layer => layer.id);
+              if (process.env.NODE_ENV === 'development') {
+                console.log('[layers-store] Initialized with all layers:', state.selectedLayerIds);
+              }
             }
           }),
           
@@ -167,7 +167,7 @@ export const useLayersStore = create<LayersStore>()(
       ),
       {
         name: StorageKeys.LAYERS.SETTINGS,
-        storage: mmkvStorage,
+        storage: layersStorage,
         partialize: (state) => ({
           settings: state.settings,
           selectedLayerIds: state.selectedLayerIds,

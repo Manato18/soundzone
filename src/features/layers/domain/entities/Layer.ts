@@ -13,11 +13,10 @@ export interface Layer {
   icon: string;        // Ioniconsのアイコン名
   color: string;       // レイヤーのテーマカラー
   description?: string;
-  isSelected: boolean; // 選択状態
 }
 
 // 固定の5つのレイヤー定義
-export const DEFAULT_LAYERS: Omit<Layer, 'isSelected'>[] = [
+export const DEFAULT_LAYERS: Layer[] = [
   {
     id: 'layer-tourism',
     type: LayerType.TOURISM,

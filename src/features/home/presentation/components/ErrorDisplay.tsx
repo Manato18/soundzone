@@ -18,12 +18,14 @@ export const ErrorDisplay: React.FC<ErrorDisplayProps> = ({ errorMsg }) => {
 const styles = StyleSheet.create({
   errorContainer: {
     position: 'absolute',
-    top: 100,
+    bottom: 50,
     left: 20,
-    right: 20,
+    right: 100,
     backgroundColor: 'rgba(255, 59, 48, 0.9)',
     padding: 10,
     borderRadius: 8,
+    height: 60,
+    justifyContent: 'center',
   },
   errorText: {
     color: '#fff',

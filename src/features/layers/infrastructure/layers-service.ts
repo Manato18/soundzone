@@ -16,11 +16,8 @@ export class LayersService {
       // シミュレートされた非同期処理
       await new Promise(resolve => setTimeout(resolve, 100));
       
-      // DEFAULT_LAYERSにisSelectedを追加して返す
-      return DEFAULT_LAYERS.map(layer => ({
-        ...layer,
-        isSelected: true, // 初期状態では全て選択
-      }));
+      // DEFAULT_LAYERSをそのまま返す
+      return DEFAULT_LAYERS;
     } catch (error) {
       console.error('Failed to fetch layers:', error);
       throw new Error('レイヤーの取得に失敗しました');
@@ -102,7 +99,6 @@ export class LayersService {
       const updatedLayer: Layer = {
         ...existingLayer,
         ...updates,
-        isSelected: updates.isSelected ?? true,
       };
       
       await new Promise(resolve => setTimeout(resolve, 100));

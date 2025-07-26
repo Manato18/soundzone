@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef } from 'react';
 import { StyleSheet, View, Text } from 'react-native';
 import MapView from 'react-native-maps';
 import AudioPlayerModal from '../../../../components/AudioPlayerModal';
@@ -6,7 +6,7 @@ import { AudioPinMarkers } from '../../audioPin/presentation/components/AudioPin
 import { useAudioPins } from '../../audioPin/presentation/hooks/useAudioPins';
 import { LayerSelector } from '../../layers/presentation/components/LayerSelector';
 import { useLayerSelection } from '../../layers/presentation/hooks/useLayerSelection';
-import { useLocation } from '../../location/presentation/hooks/useLocation';
+import { useLocationContext } from '../../location/presentation/hooks/useLocationContext';
 import { LocationButton } from '../../map/presentation/components/LocationButton';
 import { MapContainer } from '../../map/presentation/components/MapContainer';
 import { useMapRegion } from '../../map/presentation/hooks/useMapRegion';
@@ -18,27 +18,11 @@ export default function HomeScreen() {
   const mapRef = useRef<MapView>(null);
   
   // 各ドメインのhookを使用
-  const { location, errorMsg } = useLocation();
+  const { stableLocation, errorMsg } = useLocationContext();
   const { region, updateRegion } = useMapRegion();
   const { centerOnUserLocation } = useMapWithLocation(mapRef);
   const { isFollowingUser } = useMapFollowing();
-  const { layers, toggleLayer, getSelectedLayerIds } = useLayerSelection();
-  
-  // 最後の有効な位置情報を保持（チカチカ防止）
-  const [stableLocation, setStableLocation] = useState(location);
-  
-  useEffect(() => {
-    // locationが有効な値の場合のみ更新
-    // 緯度・経度が有効な数値であることを確認
-    if (location && 
-        location.coords && 
-        typeof location.coords.latitude === 'number' && 
-        typeof location.coords.longitude === 'number' &&
-        !isNaN(location.coords.latitude) && 
-        !isNaN(location.coords.longitude)) {
-      setStableLocation(location);
-    }
-  }, [location]);
+  const { layers, selectedLayerIds, toggleLayer } = useLayerSelection();
   
   // オーディオピン機能（選択されたレイヤーでフィルタリング）
   const { 
@@ -50,7 +34,7 @@ export default function HomeScreen() {
     isLoading,
     error
   } = useAudioPins({
-    layerIds: getSelectedLayerIds(),
+    layerIds: selectedLayerIds,
   });
 
   return (
@@ -69,6 +53,7 @@ export default function HomeScreen() {
 
       <LayerSelector
         layers={layers}
+        selectedLayerIds={selectedLayerIds}
         onLayerToggle={toggleLayer}
       />
 
