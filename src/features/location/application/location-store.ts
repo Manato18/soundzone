@@ -75,11 +75,11 @@ export const initialLocationState: LocationState = {
   
   // 設定（デフォルト値）
   settings: {
-    locationUpdateInterval: 2000, // 2秒
+    locationUpdateInterval: 1000, // 1秒（バランス重視設定）
     highAccuracyMode: true,
-    distanceFilter: 5, // 5メートル
+    distanceFilter: 2, // 2メートル（よりスムーズな動き）
     headingUpdateInterval: 100, // 100ミリ秒（0.1秒）
-    stableLocationThreshold: 10, // 10メートル（安定位置の更新閾値）
+    stableLocationThreshold: 3, // 3メートル（より頻繁な地図更新）
   },
 };
 

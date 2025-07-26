@@ -5,11 +5,12 @@
 2. [現状の実装分析](#現状の実装分析)
 3. [Auth機能の状態管理詳細](#auth機能の状態管理詳細)
 4. [Layers機能の状態管理詳細](#layers機能の状態管理詳細)
-5. [一元管理の判断基準](#一元管理の判断基準)
-6. [各機能の詳細分析](#各機能の詳細分析)
-7. [メリット・デメリット](#メリット・デメリット)
-8. [今後の推奨事項](#今後の推奨事項)
-9. [実装パターン](#実装パターン)
+5. [Location機能の状態管理詳細](#location機能の状態管理詳細)
+6. [一元管理の判断基準](#一元管理の判断基準)
+7. [各機能の詳細分析](#各機能の詳細分析)
+8. [メリット・デメリット](#メリット・デメリット)
+9. [今後の推奨事項](#今後の推奨事項)
+10. [実装パターン](#実装パターン)
 
 
 Layer, Auth, Location は一元管理が良さそう
@@ -31,7 +32,7 @@ Layer, Auth, Location は一元管理が良さそう
 |-----|------------|---------|--------|------|
 | Layers | ✅ LayersProvider | layers-store.ts | ✅ settings, selectedLayerIds | 完全な一元管理実装 |
 | Auth | ✅ AuthProvider | auth-store.ts + authStateManager | ✅ settings only | 完全な一元管理実装済み |
-| Location | ❌ なし | location-store.ts | ✅ settings | ストアレベルで管理 |
+| Location | ✅ LocationProvider | location-store.ts + locationStateManager | ✅ settings | 完全な一元管理実装済み |
 | AudioPin | ❌ なし | audioPin-store.ts | ✅ settings | 部分的な管理のみ |
 | Map | ❌ なし | map-store.ts | ✅ settings | 画面固有の状態管理 |
 
@@ -306,3 +307,359 @@ useCreateLayerMutation: {
    - 作成・更新・削除時に即座にUIを更新
    - エラー時は自動的にロールバック
    - バックグラウンドで実際のデータと同期
+
+## Location機能の状態管理詳細
+
+### アーキテクチャ構造
+
+```
+src/features/location/
+├── application/
+│   └── location-store.ts          # Zustandストア（中央状態管理）
+├── domain/
+│   └── entities/
+│       └── Location.ts            # 位置情報エンティティ
+├── infrastructure/
+│   └── services/
+│       └── locationStateManager.ts # 位置情報状態管理サービス
+└── presentation/
+    ├── hooks/
+    │   ├── useLocation.ts         # 後方互換性用フック
+    │   └── useLocationContext.ts  # Context統合フック
+    └── providers/
+        └── LocationProvider.tsx   # 位置情報コンテキストプロバイダー
+```
+
+### 状態管理の特徴
+
+#### Zustandストア (location-store.ts)
+
+**状態の分類**:
+```typescript
+interface LocationState {
+  // サーバー状態（将来的にサーバー連携も想定）
+  currentLocation: UserLocationData | null;  // 現在の位置情報
+  stableLocation: UserLocationData | null;   // 安定した位置情報（地図表示用）
+  
+  // UI状態
+  isLoading: boolean;
+  error: string | null;
+  isLocationEnabled: boolean;
+  isTracking: boolean;
+  
+  // 設定（永続化対象）
+  settings: {
+    locationUpdateInterval: number;     // ミリ秒単位
+    highAccuracyMode: boolean;
+    distanceFilter: number;            // メートル単位
+    headingUpdateInterval: number;     // ミリ秒単位（方向情報の更新間隔）
+    stableLocationThreshold: number;   // メートル単位（安定位置の更新閾値）
+  };
+}
+```
+
+**Middleware構成**:
+```typescript
+create<LocationStore>()(
+  devtools(                           // 最外層：開発ツール
+    persist(                          // 永続化
+      immer(                          // イミュータブル更新
+        subscribeWithSelector((set) => ({...}))
+      ),
+      {
+        name: 'location-settings',
+        storage: mmkvStorage,
+        partialize: (state) => ({ 
+          settings: state.settings    // 設定のみ永続化
+        })
+      }
+    ),
+    { enabled: process.env.NODE_ENV === 'development' }
+  )
+)
+```
+
+**セレクターフック**:
+- 個別セレクター: `useCurrentLocation()`, `useStableLocation()`, `useIsLocationEnabled()`
+- UI状態セレクター: `useLocationUIState()` (shallow比較で最適化)
+- 設定セレクター: `useLocationSettings()`
+- アクションセレクター: `useLocationActions()` (全アクションを返す)
+
+#### LocationStateManager (シングルトンサービス)
+
+**特徴**:
+```typescript
+class LocationStateManager {
+  private static instance: LocationStateManager;
+  private locationSubscription: Location.LocationSubscription | null = null;
+  private headingSubscription: Location.LocationSubscription | null = null;
+  private lastHeadingUpdate: number = 0;
+  private headingThrottleInterval: number = 250; // 250ms スロットリング
+  private errorCallback: ((error: LocationError) => void) | null = null;
+  
+  // シングルトンパターン
+  static getInstance(): LocationStateManager {
+    if (!LocationStateManager.instance) {
+      LocationStateManager.instance = new LocationStateManager();
+    }
+    return LocationStateManager.instance;
+  }
+}
+```
+
+**主要機能**:
+1. **位置情報の許可管理**:
+   - 権限要求と状態確認
+   - 位置情報サービスの有効性チェック
+   - エラー時のコールバック通知
+
+2. **位置情報の監視**:
+   - watchPositionAsyncによる継続的な位置情報取得
+   - heading（方向）情報の別途監視
+   - 250msスロットリングによるパフォーマンス最適化
+
+3. **stableLocationの管理**:
+   - 移動距離が閾値を超えた場合のみ更新
+   - headingは常に最新値を反映
+   - 地図表示の安定性を確保
+
+### 一元管理の実装ポイント
+
+1. **LocationProviderによる自動初期化**:
+   ```typescript
+   useEffect(() => {
+     // エラーコールバックの設定
+     locationStateManager.setErrorCallback((error: LocationError) => {
+       // UIアラートをPresentation層で処理
+       if (error.code === 'PERMISSION_DENIED') {
+         Alert.alert('位置情報の許可', '...');
+       }
+     });
+     
+     // マウント時に位置情報サービスを初期化
+     locationStateManager.initialize();
+
+     // クリーンアップ
+     return () => {
+       locationStateManager.cleanup();
+     };
+   }, []);
+   ```
+
+2. **AppState監視による権限変更検知**:
+   ```typescript
+   useEffect(() => {
+     const handleAppStateChange = async (nextAppState: AppStateStatus) => {
+       if (nextAppState === 'active') {
+         // フォアグラウンド復帰時に権限状態を再チェック
+         const hasPermission = await locationStateManager.requestLocationPermission();
+         
+         if (hasPermission && !isLocationEnabled) {
+           // 権限が付与された場合、サービスを初期化
+           await locationStateManager.initialize();
+         } else if (!hasPermission && isLocationEnabled) {
+           // 権限が取り消された場合、サービスを停止
+           locationStateManager.stopLocationTracking();
+         }
+       }
+     };
+     
+     appStateSubscription = AppState.addEventListener('change', handleAppStateChange);
+   }, [isLocationEnabled]);
+   ```
+
+3. **パフォーマンス最適化**:
+   - **Heading更新のスロットリング**: 250ms間隔で更新を制限
+   - **Shallow比較**: useLocationUIStateで再レンダリング最小化
+   - **StableLocation**: 閾値以上の移動時のみ更新
+
+4. **エラーハンドリング戦略**:
+   - **レイヤー分離**: InfrastructureレイヤーでエラーをキャッチしPresentation層へコールバック
+   - **権限エラーの自動クリア**: 権限取得成功時にエラー状態をクリア
+   - **サービス無効化の検出**: 位置情報サービス自体の有効性も確認
+
+5. **Context APIとの統合**:
+   ```typescript
+   export interface LocationContextValue {
+     location: UserLocationData | null;
+     stableLocation: UserLocationData | null;
+     errorMsg: string | null;
+     isLocationEnabled: boolean;
+     isLoading: boolean;
+     isTracking: boolean;
+     
+     // アクション
+     getCurrentLocation: () => Promise<UserLocationData | null>;
+     startLocationTracking: () => Promise<void>;
+     stopLocationTracking: () => void;
+     requestLocationPermission: () => Promise<boolean>;
+   }
+   ```
+
+6. **後方互換性の維持**:
+   - `useLocation`: 既存コードとの互換性を保つラッパーフック
+   - `useLocationContext`: 新規実装で推奨される統合フック
+
+## 一元管理の判断基準
+
+### 一元管理が適している機能
+
+1. **グローバルな状態を持つ**
+   - アプリ全体で共有される情報
+   - 例：認証状態、選択レイヤー、現在位置
+
+2. **複数画面で参照される**
+   - 2つ以上の画面で同じ状態を使用
+   - 例：ユーザー情報、レイヤーリスト
+
+3. **永続化が必要**
+   - アプリ再起動後も保持すべき設定
+   - 例：ユーザー設定、お気に入り
+
+### 一元管理が不適切な機能
+
+1. **画面固有の状態**
+   - 特定の画面でのみ使用される一時的な状態
+   - 例：フォーム入力値、モーダル表示状態
+
+2. **UIのローカル状態**
+   - アニメーション状態、タブ選択状態
+   - 例：ドロワー開閉、ローディング表示
+
+## 各機能の詳細分析
+
+### 実装済み（一元管理）
+
+#### Auth機能 ✅
+- **理由**: アプリ全体で認証状態を参照
+- **実装**: AuthProvider + auth-store + authStateManager
+- **永続化**: 設定のみ（セキュリティを考慮）
+
+#### Layers機能 ✅
+- **理由**: 複数画面でレイヤー選択を共有
+- **実装**: LayersProvider + layers-store
+- **永続化**: 設定と選択状態
+
+#### Location機能 ✅
+- **理由**: 地図、AudioPin作成で位置情報を共有
+- **実装**: LocationProvider + location-store + locationStateManager
+- **永続化**: 設定のみ（位置情報は永続化しない）
+
+### 未実装（部分管理）
+
+#### AudioPin機能
+- **現状**: 画面ごとに個別管理
+- **課題**: 音声再生状態の不整合
+- **推奨**: 音声再生部分のみ一元管理
+
+#### Map機能
+- **現状**: 画面固有の状態管理
+- **理由**: 地図の表示状態は画面固有
+- **推奨**: 現状維持
+
+## メリット・デメリット
+
+### メリット
+
+1. **状態の一貫性**
+   - Single Source of Truth
+   - 状態の不整合を防止
+
+2. **コードの再利用性**
+   - 共通ロジックの集約
+   - メンテナンス性向上
+
+3. **パフォーマンス最適化**
+   - 適切なメモ化
+   - 不要な再レンダリング防止
+
+### デメリット
+
+1. **複雑性の増加**
+   - 初期実装コスト
+   - 学習曲線
+
+2. **過度な抽象化のリスク**
+   - 不必要な一元化
+   - パフォーマンスへの影響
+
+## 今後の推奨事項
+
+### 短期的な対応
+
+1. **AudioPin機能の部分的一元管理**
+   - 音声再生状態のみ一元管理
+   - AudioServiceの活用
+
+2. **エラーハンドリングの統一**
+   - 共通エラーハンドラーの実装
+   - ユーザーフレンドリーなメッセージ
+
+### 長期的な方針
+
+1. **段階的な移行**
+   - 必要に応じて一元管理へ移行
+   - 過度な最適化を避ける
+
+2. **パフォーマンスモニタリング**
+   - 状態管理のオーバーヘッド監視
+   - 必要に応じた最適化
+
+## 実装パターン
+
+### 推奨パターン
+
+```typescript
+// 1. Zustandストアの定義
+const useFeatureStore = create<State & Actions>()(
+  devtools(
+    persist(
+      immer(
+        subscribeWithSelector((set) => ({
+          // 状態とアクション
+        }))
+      ),
+      {
+        name: 'feature-storage',
+        storage: mmkvStorage,
+        partialize: (state) => ({ /* 永続化対象 */ })
+      }
+    )
+  )
+);
+
+// 2. Providerの実装
+export const FeatureProvider: React.FC<PropsWithChildren> = ({ children }) => {
+  // 初期化ロジック
+  // クリーンアップ処理
+  
+  return (
+    <FeatureContext.Provider value={contextValue}>
+      {children}
+    </FeatureContext.Provider>
+  );
+};
+
+// 3. 統合フックの提供
+export const useFeatureContext = () => {
+  const context = useContext(FeatureContext);
+  if (!context) {
+    throw new Error('useFeatureContext must be used within FeatureProvider');
+  }
+  return context;
+};
+```
+
+### アンチパターン
+
+1. **過度な正規化**
+   - 不必要な状態の分割
+   - 複雑なセレクターの連鎖
+
+2. **永続化の誤用**
+   - センシティブ情報の永続化
+   - 大量データの永続化
+
+3. **Context の乱用**
+   - 頻繁に更新される値の配置
+   - 巨大なContextオブジェクト

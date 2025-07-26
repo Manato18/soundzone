@@ -1,6 +1,7 @@
 import * as Location from 'expo-location';
 import { LocationError, UserLocationData } from '../../domain/entities/Location';
 import { useLocationStore } from '../../application/location-store';
+import { isValidLocation } from '../../utils/validation';
 
 /**
  * 位置情報状態管理サービス
@@ -11,7 +12,7 @@ export class LocationStateManager {
   private locationSubscription: Location.LocationSubscription | null = null;
   private headingSubscription: Location.LocationSubscription | null = null;
   private lastHeadingUpdate: number = 0;
-  private headingThrottleInterval: number = 250; // 250ms のスロットリング
+  private headingThrottleInterval: number = 100; // 100ms のスロットリング
   private errorCallback: ((error: LocationError) => void) | null = null;
 
   private constructor() {}
@@ -75,42 +76,81 @@ export class LocationStateManager {
   }
 
   /**
-   * 現在位置を取得
+   * 現在位置を取得（リトライ機能付き）
    */
   async getCurrentLocation(): Promise<UserLocationData | null> {
     const { setIsLoading, setCurrentLocation, setStableLocation, updateStableLocationIfNeeded, handleLocationError, settings } = useLocationStore.getState();
     
-    try {
-      setIsLoading(true);
-      const currentLocation = await Location.getCurrentPositionAsync({
-        accuracy: settings.highAccuracyMode ? Location.Accuracy.High : Location.Accuracy.Balanced,
-        timeInterval: settings.locationUpdateInterval,
-        distanceInterval: settings.distanceFilter,
-      });
-      
-      setCurrentLocation(currentLocation);
-      
-      // 初回取得時はstableLocationも設定
-      const stableLocation = useLocationStore.getState().stableLocation;
-      if (!stableLocation) {
-        setStableLocation(currentLocation);
-      } else {
-        // 既存のstableLocationがある場合は条件付き更新
-        updateStableLocationIfNeeded(currentLocation);
+    const maxRetries = 3;
+    let lastError: Error | null = null;
+    
+    setIsLoading(true);
+    
+    // シンプルなリトライループ（最大3回）
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        const currentLocation = await Location.getCurrentPositionAsync({
+          accuracy: settings.highAccuracyMode ? Location.Accuracy.High : Location.Accuracy.Balanced,
+          timeInterval: settings.locationUpdateInterval,
+          distanceInterval: settings.distanceFilter,
+        });
+        
+        // バリデーションチェック
+        if (!isValidLocation(currentLocation)) {
+          // 無効な位置情報の場合は即座に次の試行へ
+          if (attempt < maxRetries) {
+            console.log(`無効な位置情報（試行 ${attempt}/${maxRetries}）、再試行します...`);
+            // 短い待機時間（500ms）
+            await new Promise(resolve => setTimeout(resolve, 500));
+            continue;
+          }
+          
+          // 最後の試行でも無効な場合
+          console.error('無効な位置情報が取得されました（全試行失敗）');
+          const locationError: LocationError = {
+            code: 'POSITION_UNAVAILABLE',
+            message: '有効な位置情報を取得できませんでした',
+          };
+          handleLocationError(locationError);
+          setIsLoading(false);
+          return null;
+        }
+        
+        // 有効な位置情報が取得できた場合
+        setCurrentLocation(currentLocation);
+        
+        // 初回取得時はstableLocationも設定
+        const stableLocation = useLocationStore.getState().stableLocation;
+        if (!stableLocation) {
+          setStableLocation(currentLocation);
+        } else {
+          // 既存のstableLocationがある場合は条件付き更新
+          updateStableLocationIfNeeded(currentLocation);
+        }
+        
+        setIsLoading(false);
+        return currentLocation;
+        
+      } catch (error) {
+        lastError = error as Error;
+        
+        if (attempt < maxRetries) {
+          console.log(`位置情報取得エラー（試行 ${attempt}/${maxRetries}）:`, error);
+          // 待機時間を段階的に増やす（1秒、2秒、3秒）
+          await new Promise(resolve => setTimeout(resolve, attempt * 1000));
+        }
       }
-      
-      setIsLoading(false);
-      return currentLocation;
-    } catch (error) {
-      console.error('現在位置取得エラー:', error);
-      const locationError: LocationError = {
-        code: 'POSITION_UNAVAILABLE',
-        message: '現在位置の取得に失敗しました',
-      };
-      handleLocationError(locationError);
-      setIsLoading(false);
-      return null;
     }
+    
+    // 全ての試行が失敗した場合
+    console.error('現在位置取得エラー（全試行失敗）:', lastError);
+    const locationError: LocationError = {
+      code: 'POSITION_UNAVAILABLE',
+      message: '現在位置の取得に失敗しました',
+    };
+    handleLocationError(locationError);
+    setIsLoading(false);
+    return null;
   }
 
   /**
@@ -177,6 +217,12 @@ export class LocationStateManager {
           distanceInterval: settings.distanceFilter,
         },
         (newLocation) => {
+          // バリデーションチェック
+          if (!isValidLocation(newLocation)) {
+            console.error('無効な位置情報が監視中に取得されました');
+            return;
+          }
+          
           // 現在のheadingを保持
           const currentHeading = useLocationStore.getState().currentLocation?.coords.heading;
           if (newLocation.coords.heading === null && currentHeading !== null && currentHeading !== undefined) {
