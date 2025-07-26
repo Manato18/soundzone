@@ -114,7 +114,11 @@ export class AuthTokenManager {
    * クリーンアップ
    */
   cleanup(): void {
+    console.log('[AuthTokenManager] Cleaning up...', {
+      hasRefreshTimer: !!this.refreshTimer,
+    });
     this.clearRefreshTimer();
+    console.log('[AuthTokenManager] Cleaned up');
   }
 }
 

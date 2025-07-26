@@ -1,6 +1,4 @@
 import { initializeStorage } from '../storage/mmkvStorage';
-import { authTokenManager } from '../../../features/auth/infra/services/authTokenManager';
-import { sessionRestoration } from '../../../features/auth/infra/services/sessionRestoration';
 
 export class AppInitializer {
   private static isInitialized = false;
@@ -15,15 +13,11 @@ export class AppInitializer {
       await initializeStorage();
       console.log('MMKV storage initialized successfully');
 
-      // セッション復元を試みる
-      const sessionRestored = await sessionRestoration.restoreSession();
-      console.log('Session restoration:', sessionRestored ? 'successful' : 'no session found');
-
-      // トークン自動更新の初期化（セッション復元が失敗した場合のみ）
-      if (!sessionRestored) {
-        await authTokenManager.initialize();
-        console.log('Auth token manager initialized successfully');
-      }
+      // 認証関連の初期化はAuthProviderで一元管理されるため、ここでは行わない
+      // AuthProviderが以下を管理:
+      // - セッション復元
+      // - トークン自動更新
+      // - 認証状態の監視
 
       // 他の初期化処理をここに追加
       // 例: Analytics, Crash reporting, etc.

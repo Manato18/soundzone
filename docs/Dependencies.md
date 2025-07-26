@@ -127,6 +127,7 @@ EncryptionKeyManager (キー生成・管理) → Expo Secure Store (キー保存
 
 | **パッケージ名** | **バージョン** | **役割・用途** | **設定・注意点** |
 |---|---|---|---|
+| **React Native Community NetInfo** | `^11.4.1` | ネットワーク状態監視・管理 | NetworkServiceクラスで使用、接続状態変更監視、オフライン対応 |
 | **React Native WebView** | `13.13.5` | Webコンテンツ表示 | セキュリティ設定重要 |
 | **React Native Dotenv** | `^3.4.11` | 環境変数管理 | .env ファイル読み込み |
 | **React Native Safe Area Context** | `5.4.0` | セーフエリア対応 | ノッチ・ホームインジケータ考慮 |

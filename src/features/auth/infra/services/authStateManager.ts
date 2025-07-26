@@ -28,8 +28,10 @@ export class AuthStateManager {
 
   /**
    * 初期化（アプリ起動時に一度だけ呼び出す）
+   * @param queryClient - QueryClientインスタンス
+   * @param restoredSession - 復元されたセッション（オプション）
    */
-  async initialize(queryClient: QueryClient): Promise<void> {
+  async initialize(queryClient: QueryClient, restoredSession?: Session | null): Promise<void> {
     if (this.isInitialized) {
       console.warn('[AuthStateManager] Already initialized');
       return;
@@ -37,8 +39,14 @@ export class AuthStateManager {
 
     this.queryClient = queryClient;
     
-    // 現在のセッションを取得して初期状態を設定
-    const { data: { session } } = await supabase.auth.getSession();
+    // セッションが渡された場合はそれを使用、なければ現在のセッションを取得
+    let session = restoredSession;
+    if (session === undefined) {
+      const { data } = await supabase.auth.getSession();
+      session = data.session;
+    }
+    
+    // 初期状態を設定
     await this.syncAuthState(session);
 
     // 認証状態変更の監視を開始
@@ -50,19 +58,40 @@ export class AuthStateManager {
     await authTokenManager.initialize();
 
     this.isInitialized = true;
-    console.log('[AuthStateManager] Initialized');
+    console.log('[AuthStateManager] Initialized with session:', !!session);
   }
 
   /**
    * クリーンアップ（アプリ終了時に呼び出す）
    */
   cleanup(): void {
+    console.log('[AuthStateManager] Starting cleanup...', {
+      isInitialized: this.isInitialized,
+      hasSubscription: !!this.authSubscription,
+    });
+
+    // 認証状態変更リスナーのクリーンアップ
     if (this.authSubscription) {
-      this.authSubscription.data.subscription.unsubscribe();
+      try {
+        this.authSubscription.data.subscription.unsubscribe();
+        console.log('[AuthStateManager] Auth subscription unsubscribed');
+      } catch (error) {
+        console.error('[AuthStateManager] Error unsubscribing auth subscription:', error);
+      }
       this.authSubscription = null;
     }
-    authTokenManager.cleanup();
+
+    // トークンマネージャーのクリーンアップ
+    try {
+      authTokenManager.cleanup();
+    } catch (error) {
+      console.error('[AuthStateManager] Error cleaning up authTokenManager:', error);
+    }
+
+    // 内部状態のリセット
+    this.queryClient = null;
     this.isInitialized = false;
+    
     console.log('[AuthStateManager] Cleaned up');
   }
 
@@ -88,6 +117,7 @@ export class AuthStateManager {
       
       case 'INITIAL_SESSION':
         // 初期セッションは initialize で処理済み
+        // 注意: ここでclearAuthStateを呼ばない（セッション復元を妨げるため）
         break;
       
       default:
@@ -127,7 +157,9 @@ export class AuthStateManager {
       // セッションを永続化
       await sessionPersistence.persistSession(session);
     } else {
-      await this.clearAuthState();
+      // セッションがない場合でも、明示的なサインアウト以外ではクリアしない
+      // （セッション復元中や初期化中の可能性があるため）
+      console.log('[AuthStateManager] No session in syncAuthState - skipping clear');
     }
   }
 

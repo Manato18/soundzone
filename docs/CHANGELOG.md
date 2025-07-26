@@ -1,339 +1,247 @@
 # SoundZone - 変更履歴
 
-## [2025-07-25] レイヤー機能の状態管理リファクタリング
+## [2025-07-26] 認証機能の改善 - ネットワークエラーハンドリングとメモリリーク対策
 
 ### 概要
-レイヤー機能において、UI状態（選択状態）とドメインモデルの分離を完全に実施し、StateManagement.mdのガイドラインに完全準拠させました。
+認証機能において、ネットワークエラーハンドリングの強化とメモリリーク対策を実装しました。
+
+### 実装内容
+
+#### 1. ネットワークエラーハンドリングの強化
+
+**問題:**
+- 機内モードなどオフライン時のエラーメッセージが技術的で分かりにくい
+- タイムアウト処理がない
+- エラー時の対処法が不明確
+
+**解決策:**
+1. **NetworkServiceの作成** (`/src/shared/services/networkService.ts`)
+   - React Native NetInfoを使用したネットワーク状態監視
+   - オフライン/オンライン状態のリアルタイム検出
+   - ネットワークエラーの判定機能
+
+2. **ErrorSanitizerの拡張**
+   - より多くのネットワークエラーパターンの検出
+   - 日本語でのユーザーフレンドリーなエラーメッセージ
+   - 「インターネット接続エラー」「機内モードがオフになっていることを確認」など具体的な解決方法の提示
+
+3. **AuthServiceの改善**
+   - APIコール前のオフラインチェック
+   - 30秒のタイムアウト設定（Promise.race使用）
+   - ネットワークエラー時の特別な処理とメッセージ
+
+4. **UI/UXの改善**
+   - ネットワークエラー時に設定アプリを開くオプション
+   - プラットフォーム別の設定画面への誘導（iOS: `app-settings:`、Android: `Linking.openSettings()`）
+
+#### 2. メモリリーク対策の実装
+
+**問題:**
+- AuthProviderのクリーンアップ処理が初期化中の場合を考慮していない
+- 全ての非同期処理でisMountedフラグが確認されていない
+
+**解決策:**
+1. **AuthProviderの初期化状態管理**
+   - `initializationStateRef`で初期化状態を追跡（'idle' | 'initializing' | 'initialized'）
+   - クリーンアップ時に初期化状態を確認し、完了時のみ`authStateManager.cleanup()`を実行
+   - 初期化中の各非同期処理でisMountedフラグを確認
+
+2. **エラーハンドリングの強化**
+   - authStateManagerとauthTokenManagerのクリーンアップでtry-catchを追加
+   - 詳細なログ出力でデバッグを容易に
+
+3. **タイマーのクリーンアップ確認**
+   - emailVerificationのクールダウンタイマー：✅ 既に適切に実装
+   - rateLimiterのロックアウトタイマー：✅ 既に適切に実装
+   - authTokenManagerのリフレッシュタイマー：✅ 既に適切に実装
+
+#### 3. メール認証のクールダウンタイマー修正
+
+**問題:**
+- 新規登録後にEmailVerificationScreenに遷移した際、60秒のクールダウンが開始されない
+
+**解決策:**
+1. `useEmailVerificationHook`に`setEmailAndStartCooldown`関数を追加
+2. EmailVerificationScreen初回マウント時にメールアドレスとクールダウンを自動設定
+3. 「再送信可能まで X秒」の表示が正しく動作
+
+### 技術的な改善点
+- **ネットワーク状態の監視**: NetInfoによるリアルタイム監視
+- **エラーメッセージの国際化**: 日本語での分かりやすいメッセージ
+- **メモリ管理**: 初期化状態の適切な管理によるメモリリーク防止
+- **ユーザビリティ**: エラー時の具体的な解決策の提示
+
+### 結果
+- オフライン時のエラーハンドリングが大幅に改善
+- メモリリークの可能性を排除
+- メール認証フローの安定性向上
+- 実機での動作確認完了
+
+## [2025-07-26] Auth認証機能の競合状態（Race Condition）問題の解決
+
+### 概要
+認証機能において発生していた以下の競合状態の問題を解決しました：
+1. セッション復元とauthStateManager初期化の競合
+2. 認証プロセス中の重複実行
+
+### 解決した問題
+
+#### 1. セッション復元とauthStateManager初期化の競合
+**問題内容:**
+- AuthProviderで`sessionRestoration.restoreSession()`と`authStateManager.initialize()`が並行実行される可能性があった
+- sessionRestorationが成功してもauthStateManagerが未初期化の場合、状態が正しく同期されない
+- authStateManagerの`initialize`内でも`getSession()`が呼ばれるため、セッション復元が完了する前に状態が設定される可能性があった
+
+**解決策:**
+- `sessionRestoration.restoreSession()`がSessionオブジェクトを返すように変更
+- `authStateManager.initialize(queryClient, restoredSession?)`でセッションを受け取れるように変更
+- AuthProviderで順次実行し、復元されたセッションを確実にauthStateManagerに渡す
+
+#### 2. 認証プロセス中の重複実行防止
+**問題内容:**
+- `authProcessState`は存在していたが、実際のログイン/サインアップ処理での使用が不完全
+- ボタンの無効化がフォームレベル(`isSubmitting`)でしか管理されていない
+- 複数の認証画面から同時に認証処理が実行される可能性があった
+
+**解決策:**
+- `useLoginFormHook`と`useSignUpFormHook`の`isSubmitting`に`authProcessState !== 'IDLE'`の条件を追加
+- これにより、認証処理中は全ての認証関連ボタンが無効化される
+- API呼び出し前の`authProcessState`チェックで重複実行を防止
+
+### 実装内容
+
+#### 修正ファイル:
+1. `/src/features/auth/infra/services/authStateManager.ts`
+   - `initialize`メソッドにオプショナルな`restoredSession`パラメータを追加
+   - セッションが渡された場合はそれを使用、なければ`getSession()`を呼び出す
+
+2. `/src/features/auth/infra/services/sessionRestoration.ts`
+   - `restoreSession()`の戻り値を`Promise<boolean>`から`Promise<Session | null>`に変更
+   - 復元されたセッションを返すように修正
+
+3. `/src/features/auth/presentation/providers/AuthProvider.tsx`
+   - セッション復元の結果を`authStateManager.initialize()`に渡すように修正
+   - 順次実行により競合状態を解消
+
+4. `/src/features/auth/presentation/hooks/use-auth.ts`
+   - `useLoginFormHook`の`isSubmitting`に`authProcessState !== 'IDLE'`を追加
+   - `useSignUpFormHook`の`isSubmitting`に`authProcessState !== 'IDLE'`を追加
+
+### 技術的な改善点
+- **順次実行**: セッション復元→authStateManager初期化の順序を保証
+- **状態の一貫性**: 復元されたセッションが確実に反映される
+- **グローバルな重複防止**: `authProcessState`による全画面での認証処理制御
+- **コードの簡潔性**: 不要な重複チェックを削除し、単一の責任原則を維持
+
+### 結果
+- セッション復元の信頼性向上
+- 認証処理の重複実行を完全に防止
+- より堅牢な認証フローの実現
+- 実機での動作確認完了
+
+## [2025-07-25] Auth（認証）機能の一元管理実装
+
+### 概要
+認証機能において、CENTRALIZED_STATE_MANAGEMENT.mdのガイドラインに基づき、AuthProviderによる一元管理を実装しました。LayersProviderと同様のパターンで実装し、認証状態の管理を最適化しました。
 
 ### 実施内容
 
-#### 1. ドメインモデルからUI状態の分離
+#### 1. AuthProviderの作成
+**新規作成ファイル:**
+- `/src/features/auth/presentation/providers/AuthProvider.tsx`
+  - アプリケーションレベルで認証状態を一元管理
+  - authStateManagerによる認証状態の監視
+  - セッション復元とトークン自動更新の統合
+  - メモリリーク対策の実装
+
+- `/src/features/auth/presentation/providers/useAuthProvider.ts`
+  - AuthProvider専用のカスタムフック
+  - 全認証データのクリア機能
+  - 認証状態の再同期機能
+
+#### 2. Provider階層の構築
 **修正ファイル:**
-- `/src/features/layers/domain/entities/Layer.ts`
-  - `isSelected`プロパティを削除し、純粋なドメインモデルに変更
-  - `DEFAULT_LAYERS`の型定義を簡潔化（`Omit<Layer, 'isSelected'>`を`Layer[]`に）
+- `/App.tsx`
+  - QueryClientProvider → AuthProvider → LayersProvider → App の階層を構築
+  - 依存関係を明示的に表現
 
-#### 2. インフラストラクチャ層の修正
+#### 3. 既存コードのリファクタリング
 **修正ファイル:**
-- `/src/features/layers/infrastructure/layers-service.ts`
-  - `fetchLayers()`からUI状態の付与を削除
-  - `updateLayer()`からUI状態の処理を削除
-  - 純粋なドメインデータのみを返すように変更
+- `/src/shared/infra/initialization/appInitializer.ts`
+  - 認証関連の初期化処理を削除（AuthProviderで一元管理）
+  
+- `/src/features/auth/presentation/hooks/use-auth.ts`
+  - ミューテーションの簡素化
+  - authStateManagerによる自動同期を活用
+  - useResetとuseQueryClientのインポート追加
 
-#### 3. プレゼンテーション層の更新
-**修正ファイル:**
-- `/src/features/layers/presentation/components/LayerSelector.tsx`
-  - `selectedLayerIds`を別プロパティとして受け取るように変更
-  - 選択状態を`selectedLayerIds.includes(layer.id)`で判定
+- `/src/navigation/RootNavigator.tsx`
+  - 重複するauthStateManagerの初期化処理を削除
 
-- `/src/features/layers/presentation/LayersScreen.tsx`
-  - 選択状態を`selectedLayerIds`から判定するように変更
-  - 全ての`layer.isSelected`参照を削除
-
-- `/src/features/layers/presentation/components/LayersDebugPanel.tsx`
-  - 選択状態の判定ロジックを更新
-
-- `/src/features/layers/presentation/hooks/useLayerSelection.ts`
-  - `isSelected`を含まないLayer配列を返すように修正
-  - 未使用の`layersSelectors`インポートを削除
-
-#### 4. 他機能との統合修正
-**修正ファイル:**
-- `/src/features/home/presentation/HomeScreen.tsx`
-  - LayerSelectorに`selectedLayerIds`を渡すように修正
-
-- `/src/features/layers/presentation/hooks/use-layers-query.ts`
-  - 楽観的更新から`isSelected`プロパティを削除
-
-#### 5. ユーティリティ関数の更新
-**修正ファイル:**
-- `/src/features/layers/domain/utils/layerUtils.ts`
-  - 戻り値の型定義を`Omit<Layer, 'isSelected'>`から`Layer`に変更
+#### 4. テスト実装
+**新規作成ファイル:**
+- `/src/features/auth/presentation/providers/__tests__/AuthProvider.test.tsx`
+  - AuthProviderの単体テスト
+  - 初期化とクリーンアップの動作確認
 
 ### 技術的な改善点
-- **関心の分離**: UI状態とドメインモデルの完全な分離
-- **型安全性**: TypeScriptエラーの完全な解消
-- **保守性**: StateManagement.mdに準拠した一貫性のある実装
-- **パフォーマンス**: 不要なプロパティの削除によるメモリ使用量の削減
+- **一元管理**: 認証状態の管理をAuthProviderに集約
+- **自動同期**: Supabaseの認証状態変更を自動検知・同期
+- **メモリリーク対策**: isMountedフラグによる非同期処理の安全な管理
+- **保守性**: LayersProviderと同じパターンで一貫性を確保
+
+### 実装アプローチ
+StateManagement.mdとCENTRALIZED_STATE_MANAGEMENT.mdの設計原則に従い：
+- Single Source of Truth: AuthProviderで認証状態を一元管理
+- レイヤー責務の明確化: 既存のauthStateManagerを最大限活用
+- 段階的な移行: 既存のフックインターフェースを維持しつつ内部実装を改善
 
 ### 結果
 - TypeScriptコンパイルエラー: 0
-- レイヤー機能のLint警告: 0
-- UI状態管理の一元化完了
-- ドメインモデルの純粋性確保
+- 認証フローの安定性向上
+- セッション復元の確実な動作
+- トークン自動更新の信頼性向上
 
-## [2025-07-25] 一元管理アーキテクチャガイドの作成
+### 実機検証チェックリスト対応状況
 
-### 概要
-SoundZoneアプリの状態管理方針を明確化するため、一元管理アーキテクチャに関する包括的なドキュメントを作成しました。
+#### ✅ 実装済み機能一覧
 
-### 作成したドキュメント
-- **`/docs/architecture/CENTRALIZED_STATE_MANAGEMENT.md`**
-  - 一元管理vs個別管理の判断基準
-  - 各機能（Auth, Location, AudioPin, Map等）の分析
-  - メリット・デメリットの詳細な比較
-  - 実装パターンとベストプラクティス
-  - 今後の推奨優先順位
+**1. 認証状態の単一ソース化**
+- 初回起動時の認証状態確認（`[AuthProvider] Initializing auth...`ログ出力）
+- ログイン後の状態同期（セッション自動復元）
+- トークン自動更新（5分前に自動更新スケジューリング）
 
-### 主要な決定事項
-1. **レイヤー機能**: LayersProviderによる一元管理を継続
-2. **Auth機能**: AuthProvider実装を推奨（次期実装）
-3. **Location機能**: LocationProvider実装を推奨
-4. **AudioPin機能**: 部分的な一元管理を推奨
-5. **Map機能**: 個別管理を維持
+**2. 競合状態の解決**
+- ログイン中の重複操作防止（`Login attempt blocked`ログ出力）
+- サインアップ中の重複操作防止（`Signup attempt blocked`ログ出力）
+- ログアウト中の操作防止（`Signout attempt blocked`ログ出力）
+- エラーメッセージ: '認証処理中です。しばらくお待ちください。'
 
-## [2025-07-25] レイヤー選択状態の永続化修正
+**3. メモリリーク対策**
+- 画面遷移時のタイマークリーンアップ
+- アプリ終了時の完全クリーンアップ（`[AuthStateManager] Cleaned up`ログ出力）
+- isMountedフラグによる非同期処理の安全管理
 
-### 概要
-レイヤーの選択状態がアプリ再起動時に保持されない問題を修正しました。永続化されたデータが初期化処理によって上書きされていた問題を解決しました。
+**4. エラーハンドリング**
+- ネットワークエラー時のユーザーフレンドリーメッセージ
+- レート制限機能（5回失敗で15分ロックアウト）
+- カウントダウン表示（秒単位で更新）
+- errorSanitizerによる技術的詳細の隠蔽
 
-### 問題の詳細
-- **症状**: アプリを終了して再起動すると、レイヤーは全て選択された状態に戻る
-- **原因**: `initializeSelectedLayers`が毎回実行され、永続化データを無視していた
+**5. セッション永続化**
+- アプリ再起動後の自動セッション復元
+- 長時間放置後のトークン自動更新によるセッション維持
 
-### 修正内容
-
-#### 1. layers-store.tsの修正
-- `initializeSelectedLayers`メソッドを修正
-- 既にselectedLayerIdsが存在する場合（永続化データから復元）はスキップ
-- デバッグログを追加して動作を確認可能に
-
-#### 2. LayersProvider.tsxの修正  
-- `useRef`を使用して初期化を一度だけ実行
-- 永続化データがある場合は初期化をスキップ
-- 開発環境でのデバッグログを改善
-
-### 技術的な詳細
-```typescript
-// 修正前: 毎回全レイヤーを選択してしまう
-initializeSelectedLayers: () => set((state) => {
-  if (state.settings.showAllByDefault) {
-    state.selectedLayerIds = state.availableLayers.map(layer => layer.id);
-  }
-})
-
-// 修正後: 永続化データがある場合はスキップ
-initializeSelectedLayers: () => set((state) => {
-  if (state.selectedLayerIds.length > 0) {
-    return; // 永続化データを保持
-  }
-  // 初回のみ初期化
-})
+**6. デバッグログ**
+```
+[AuthProvider] Initializing auth...
+[AuthStateManager] Initialized
+[AuthStateManager] Auth state changed: SIGNED_IN
+[AuthTokenManager] Scheduling token refresh in XXXs
+[AuthStateManager] Auth state changed: SIGNED_OUT
+[AuthProvider] Cleaning up...
 ```
 
-### 検証方法
-1. 特定のレイヤーを選択/解除
-2. アプリを完全に終了
-3. アプリを再起動
-4. 選択状態が保持されていることを確認
-
-### 今後の方針
-レイヤー機能は**一元管理**を継続することに決定しました。理由：
-- レイヤー作成は専用画面で行い、他の画面では登録済みレイヤーのみを使用
-- 全画面で同じレイヤーリストを参照するため一元管理が最適
-- 将来的な拡張時は、必要に応じてキャッシュ戦略を調整（staleTimeの変更等）
-
-## [2025-07-25] レイヤー機能のパフォーマンス最適化（Phase 2）
-
-### 概要
-LAYER_ISSUES_SOLUTION.mdのPhase 2を完了し、レイヤー機能のパフォーマンスを大幅に改善しました。重複API呼び出しの防止、不要な再レンダリングの削減、楽観的更新の実装により、ユーザー体験が向上しました。
-
-### 主要な実装内容
-
-#### 1. LayersProviderによる一元管理
-**新規作成ファイル:**
-- `/src/features/layers/presentation/providers/LayersProvider.tsx`
-  - アプリケーションレベルでレイヤーデータを一元管理
-  - React Queryのキャッシュを最大限活用（staleTime: Infinity）
-  - エラーハンドリングとリトライロジック実装
-
-**修正ファイル:**
-- `/App.tsx`
-  - QueryClientProviderの直下にLayersProviderを配置
-  - アプリ全体でレイヤーデータを共有
-
-#### 2. useLayerSelectionフックの最適化
-**修正ファイル:**
-- `/src/features/layers/presentation/hooks/useLayerSelection.ts`
-  - Zustand shallowセレクターで必要な状態のみ購読
-  - useCallbackで全ての関数をメモ化
-  - 新たにselectedLayersとsetSelectedLayersを追加
-  - アクションと状態を分離して再レンダリングを最小化
-
-#### 3. 楽観的更新の実装
-**修正ファイル:**
-- `/src/features/layers/presentation/hooks/use-layers-query.ts`
-  - useCreateLayerMutation: onMutateで楽観的更新
-  - useUpdateLayerMutation: 即座に画面反映
-  - useDeleteLayerMutation: 削除時の選択状態も同期
-  - エラー時の自動ロールバック実装
-
-### 技術的な改善点
-- **パフォーマンス**: 重複API呼び出しを完全に排除
-- **レスポンス性**: 楽観的更新により即座に操作が反映
-- **安定性**: エラー時の自動ロールバック機能
-- **保守性**: StateManagement.mdに準拠した一貫性のある実装
-
-### 実装アプローチ
-StateManagement.mdの設計原則に従い、以下の方針で実装:
-- Single Source of Truth: LayersProviderで一元管理
-- レイヤー責務の明確化: Infrastructure/Application/Presentationの分離
-- React Query標準機能の活用: キャッシュ戦略と楽観的更新
-
-## [2025-07-25] メモリリーク調査・修正
-
-### 概要
-AudioPin、Map、Location、Layer機能のメモリリーク調査を実施し、発見された問題を修正しました。また、将来的なメモリリーク防止のためのガイドラインとサンプル実装を作成しました。
-
-### 調査結果と対応
-
-#### 1. AudioPin機能 ✅
-- **結果**: メモリリークなし
-- **詳細**: EventListenerが適切にクリーンアップされている
-
-#### 2. Map機能 ❌ → ✅
-- **問題**: `useMapWithLocation`の`previousLocationRef`が未クリーンアップ
-- **修正**: useEffectのクリーンアップ関数でnullをセット
-- **修正ファイル**: `/src/features/map/presentation/hooks/useMapWithLocation.ts`
-
-#### 3. Location機能 ✅
-- **結果**: メモリリークなし
-- **詳細**: subscriptionが適切にクリーンアップされている
-
-#### 4. Layer機能 ✅
-- **結果**: 現在subscribeを使用していない（問題なし）
-- **対策**: 予防的なガイドラインとサンプルを作成
-
-### 作成したドキュメント
-
-1. **`/docs/ZustandSubscribeGuideline.md`**
-   - Zustand subscribeのメモリリーク防止ガイドライン
-   - 正しい実装方法とよくある間違い
-
-2. **`/docs/MemoryLeakFixReport.md`**
-   - 今回の調査・修正の詳細レポート
-   - 推奨事項と今後の対策
-
-### 作成したサンプル実装
-
-1. **`/src/features/layers/presentation/hooks/useLayerSubscriptionExample.ts`**
-   - Zustand subscribeの正しい使用例
-   - 3つの実装パターン（基本、条件付き、最適化）
-
-### 技術的な改善点
-- メモリリークの完全な防止
-- 将来的な実装での問題防止
-- コードレビューでの確認ポイントの明確化
-
-### 次のステップ
-残っている高優先度の問題：
-1. 位置情報の状態不整合（stableLocation、heading）
-2. エラーハンドリング不足（権限拒否、APIリトライ）
-
-## [2025-07-25] レイヤー切替時のピン表示最適化（Phase 2）
-
-### 概要
-AUDIOPIN_ISSUES_AND_SOLUTIONS.mdのPhase 2を完了し、レイヤー切替時のピン消失問題を解決しました。クライアントサイドフィルタリング方式を採用し、UXを大幅に改善しました。
-
-### 主要な実装内容
-
-#### 1. クライアントサイドフィルタリングの実装
-**修正ファイル:**
-- `src/features/audioPin/presentation/hooks/read/useAudioPinsQuery.ts`
-  - queryKeyからlayerIdsを削除
-  - 常に全てのピンを取得するように変更
-  - APIリクエストの削減
-
-**新規作成ファイル:**
-- `src/features/audioPin/presentation/hooks/read/useFilteredAudioPins.ts`
-  - クライアントサイドでレイヤーフィルタリングを実装
-  - useMemoを使用した効率的なフィルタリング
-  - デバッグログの追加
-
-- `src/features/audioPin/presentation/hooks/index.ts`
-  - フックのエクスポートを集約
-
-**修正ファイル:**
-- `src/features/audioPin/presentation/hooks/useAudioPins.ts`
-  - useAudioPinsQueryからuseFilteredAudioPinsに変更
-  - 既存のインターフェースを維持
-
-#### 2. 追加修正
-- `components/AudioPlayerModal.tsx`
-  - panResponder内でのcloseModal参照エラーを修正
-  - 循環参照を回避
-
-### 技術的な改善点
-- **レイヤー切替時のちらつき解消**: 即座に反映される
-- **パフォーマンス向上**: キャッシュの効率的な活用
-- **APIリクエスト削減**: レイヤー変更時の不要なリクエストを排除
-- **ユーザー体験の向上**: スムーズなレイヤー切替
-
-### 実装アプローチ
-クライアントサイドフィルタリングを選択した理由：
-- UXの最適化（即座の反映）
-- ネットワークリクエストの削減
-- 将来的なオフライン対応の容易さ
-- リアルタイム更新の実装が簡単
-
-### 次のステップ
-Phase 3については実装状況を精査した結果、既に主要な問題が解決されているため追加実装は不要と判断しました。詳細はAUDIOPIN_ISSUES_AND_SOLUTIONS.mdを参照してください。
-
-## [2025-07-25] AudioPin音声再生機能の改善（Phase 1）
-
-### 概要
-AUDIOPIN_ISSUES_AND_SOLUTIONS.mdのPhase 1を完了し、音声再生のメモリリーク問題を解決しました。さらにStateManagement.mdの設計原則に従ったリファクタリングを実施しました。
-
-### 主要な実装内容
-
-#### 1. メモリリーク対策
-**修正ファイル:**
-- `components/AudioPlayerModal.tsx`
-  - コンポーネントアンマウント時のクリーンアップ処理追加
-  - closeModal関数での音声停止実装
-  - バックグラウンド時の音声一時停止
-
-#### 2. StateManagement.md準拠のリファクタリング
-**新規作成ファイル:**
-- `src/features/audioPin/infrastructure/services/AudioService.ts`
-  - Infrastructure層としてTrackPlayerの操作を抽象化
-  - シングルトンパターンで実装
-  - エラーハンドリングの強化
-
-- `src/features/audioPin/presentation/hooks/useAudioPlayer.ts`
-  - Presentation層のカスタムフック
-  - Infrastructure層とApplication層を統合
-  - TrackPlayerイベントとZustandストアの同期
-
-**修正ファイル:**
-- `components/AudioPlayerModal.tsx`
-  - TrackPlayerの直接操作を削除
-  - useAudioPlayerフックを使用するように変更
-  - レイヤー責務に従った実装
-
-#### 3. 実機検証で発見された問題の修正
-**追加修正:**
-1. **モーダルスワイプ時の音声停止**
-   - 問題: スワイプでモーダルを閉じても音声が停止しない
-   - 修正: performTransitionでCLOSED時にcloseModal()を呼ぶように変更
-
-2. **バックグラウンドからの再生位置保持**
-   - 問題: バックグラウンドから復帰時に最初から再生される
-   - 修正: AudioServiceにcurrentTrackIdを追加し、同じトラックの場合はリセットしない
-
-3. **ログアウト時のエラー対策**
-   - 問題: TrackPlayer未初期化時のエラー
-   - 修正: 各メソッドに初期化チェックを追加
-
-### 技術的な改善点
-- メモリリークの完全な防止
-- レイヤー責務の明確化による保守性向上
-- 状態管理の一元化
-- エラーハンドリングの強化
-- ユーザー体験の向上（再生位置の保持）
-
-### パッケージ依存
-- `react-native-track-player`: 音声再生機能（既存）
-
-### 次のステップ
-Phase 2では、レイヤー切替時のピン消失問題の解決に取り組む予定です。
+**7. 画面遷移制御**
+- 認証状態による適切な画面表示（AuthNavigator/AppNavigator）
+- メール認証状態の確認

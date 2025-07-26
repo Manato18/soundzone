@@ -40,6 +40,7 @@ export default function EmailVerificationScreen({
     clearErrors,
     isVerifying,
     isResending,
+    setEmailAndStartCooldown,
   } = useEmailVerificationHook();
   
   // 6桁のOTPコード管理（各桁を配列で管理）
@@ -47,6 +48,13 @@ export default function EmailVerificationScreen({
   
   // TextInput参照配列（フォーカス制御用）
   const inputRefs = useRef<(TextInput | null)[]>([]);
+
+  // 初回マウント時にメールアドレスとクールダウンを設定
+  React.useEffect(() => {
+    if (email && (!verification.email || verification.email !== email)) {
+      setEmailAndStartCooldown(email);
+    }
+  }, [email, verification.email, setEmailAndStartCooldown]);
 
   // OTPコード入力処理
   const handleOtpCodeChange = useCallback((value: string, index: number) => {

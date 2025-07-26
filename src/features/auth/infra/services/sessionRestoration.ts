@@ -1,6 +1,6 @@
+import { Session } from '@supabase/supabase-js';
 import { supabase } from '../../../../shared/services/supabase';
 import { sessionPersistence } from './sessionPersistence';
-import { authTokenManager } from './authTokenManager';
 
 export class SessionRestoration {
   private static instance: SessionRestoration;
@@ -17,12 +17,13 @@ export class SessionRestoration {
 
   /**
    * アプリ起動時のセッション復元
+   * @returns 復元されたセッション、または復元失敗時はnull
    */
-  async restoreSession(): Promise<boolean> {
+  async restoreSession(): Promise<Session | null> {
     // 既に復元中の場合はスキップ
     if (this.isRestoring) {
       console.log('[SessionRestoration] Already restoring session');
-      return false;
+      return null;
     }
 
     this.isRestoring = true;
@@ -35,7 +36,7 @@ export class SessionRestoration {
       
       if (!refreshToken || !sessionData) {
         console.log('[SessionRestoration] No persisted session found');
-        return false;
+        return null;
       }
 
       console.log('[SessionRestoration] Found persisted session, attempting to restore...');
@@ -48,7 +49,7 @@ export class SessionRestoration {
       if (error) {
         console.error('[SessionRestoration] Failed to restore session:', error);
         await sessionPersistence.clearPersistedSession();
-        return false;
+        return null;
       }
 
       if (data.session) {
@@ -57,16 +58,14 @@ export class SessionRestoration {
         // 新しいセッション情報を永続化
         await sessionPersistence.persistSession(data.session);
         
-        // トークン自動更新を開始
-        await authTokenManager.initialize();
-        
-        return true;
+        // 復元されたセッションを返す（authTokenManagerの初期化はauthStateManagerで行う）
+        return data.session;
       }
 
-      return false;
+      return null;
     } catch (error) {
       console.error('[SessionRestoration] Unexpected error during session restoration:', error);
-      return false;
+      return null;
     } finally {
       this.isRestoring = false;
     }
