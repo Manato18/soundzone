@@ -33,8 +33,200 @@ Layer, Auth, Location は一元管理が良さそう
 | Layers | ✅ LayersProvider | layers-store.ts | ✅ settings, selectedLayerIds | 完全な一元管理実装 |
 | Auth | ✅ AuthProvider | auth-store.ts + authStateManager | ✅ settings only | 完全な一元管理実装済み |
 | Location | ✅ LocationProvider | location-store.ts + locationStateManager | ✅ settings | 完全な一元管理実装済み |
-| AudioPin | ❌ なし | audioPin-store.ts | ✅ settings | 部分的な管理のみ |
-| Map | ❌ なし | map-store.ts | ✅ settings | 画面固有の状態管理 |
+
+---
+
+## 一元状態管理（Centralized State Management）
+
+### 一元管理の判断基準
+
+**一元管理が必要な場合**：
+- 3つ以上の画面で同じデータを参照
+- 画面間でのリアルタイム同期が必要
+- 他の機能がそのデータに依存
+- アプリ全体の動作に影響するグローバル状態
+
+**個別管理で十分な場合**：
+- 特定画面でのみ使用される状態
+- 画面遷移時にリセットしてよい一時的なデータ
+- 他機能に影響しない独立した処理
+
+### Provider実装パターン
+
+```typescript
+// 1. ディレクトリ構造
+src/features/<feature>/
+├── application/
+│   └── <feature>-store.ts         # Zustandストア
+├── domain/
+│   └── entities/                  # ドメインエンティティ
+├── infrastructure/
+│   └── services/                  # APIサービス、状態管理サービス
+└── presentation/
+    ├── hooks/
+    │   ├── use-<feature>.ts       # 統合フック
+    │   └── use-<feature>-query.ts # TanStack Query統合
+    └── providers/
+        └── <Feature>Provider.tsx   # コンテキストプロバイダー
+
+// 2. Provider実装例
+export const FeatureProvider: React.FC<PropsWithChildren> = ({ children }) => {
+  // 初期データ取得
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['feature'],
+    queryFn: fetchFeatureData,
+    staleTime: Infinity, // データ特性に応じて設定
+  });
+
+  // Zustandストアへの同期
+  useEffect(() => {
+    if (data) {
+      useFeatureStore.getState().setData(data);
+    }
+  }, [data]);
+
+  if (error) return <ErrorBoundary error={error} />;
+  return <>{children}</>;
+};
+```
+
+### 状態の分類と管理戦略
+
+```typescript
+interface FeatureState {
+  // サーバー状態（TanStack Queryで管理）
+  data: Entity[];
+  
+  // UI状態（Zustand管理、非永続）
+  ui: {
+    isLoading: boolean;
+    error: string | null;
+    selectedId: string | null;
+    modalState: ModalState;
+  };
+  
+  // 設定（Zustand管理、MMKV永続化）
+  settings: {
+    userPreferences: Preferences;
+    cachedSelections: string[];
+  };
+  
+  // プロセス状態（競合防止用）
+  processState: 'IDLE' | 'PROCESSING' | 'ERROR';
+}
+```
+
+### Zustand Middlewareの順序（重要）
+
+```typescript
+// 正しい順序：外側から内側へ
+export const useFeatureStore = create<FeatureState & FeatureActions>()(
+  devtools(              // 1. 最外層：開発ツール
+    persist(             // 2. 永続化
+      immer(             // 3. イミュータブル更新
+        subscribeWithSelector((set) => ({
+          // ストア実装
+        }))
+      ),
+      {
+        name: 'feature-storage',
+        storage: mmkvStorage,
+        partialize: (state) => ({
+          settings: state.settings  // 設定のみ永続化
+        })
+      }
+    ),
+    { enabled: process.env.NODE_ENV === 'development' }
+  )
+);
+```
+
+### 楽観的更新の実装
+
+```typescript
+const useUpdateFeatureMutation = () => {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: updateFeature,
+    onMutate: async (newData) => {
+      // 1. 既存クエリをキャンセル
+      await queryClient.cancelQueries({ queryKey: ['feature'] });
+      
+      // 2. 現在のデータを保存
+      const previousData = queryClient.getQueryData(['feature']);
+      
+      // 3. 楽観的更新
+      queryClient.setQueryData(['feature'], (old) => ({
+        ...old,
+        ...newData
+      }));
+      
+      // 4. ロールバック用コンテキストを返す
+      return { previousData };
+    },
+    onError: (err, _, context) => {
+      // エラー時はロールバック
+      if (context?.previousData) {
+        queryClient.setQueryData(['feature'], context.previousData);
+      }
+    },
+    onSettled: () => {
+      // 最終的に最新データを取得
+      queryClient.invalidateQueries({ queryKey: ['feature'] });
+    }
+  });
+};
+```
+
+### セレクターパターン
+
+```typescript
+// 個別セレクター（再描画最適化）
+export const useFeatureData = () => useFeatureStore((state) => state.data);
+export const useFeatureUI = () => useFeatureStore((state) => state.ui, shallow);
+
+// 複合セレクター
+export const useSelectedFeature = () => {
+  const data = useFeatureStore((state) => state.data);
+  const selectedId = useFeatureStore((state) => state.ui.selectedId);
+  return data.find(item => item.id === selectedId);
+};
+
+// セレクターオブジェクト（再利用可能）
+export const featureSelectors = {
+  getFilteredData: (filter: Filter) => (state: FeatureState) => {
+    return state.data.filter(item => matchesFilter(item, filter));
+  },
+  isItemSelected: (id: string) => (state: FeatureState) => {
+    return state.ui.selectedId === id;
+  }
+};
+```
+
+### 一元管理のベストプラクティス
+
+1. **初期化戦略**：
+   - 永続化データの復元を優先
+   - デフォルト値へのフォールバック
+   - 初回起動時の特別処理
+
+2. **クリーンアップ**：
+   - ログアウト時の状態リセット
+   - 不要なキャッシュの削除
+   - メモリリークの防止
+
+3. **エラーハンドリング**：
+   - グレースフルデグラデーション
+   - ユーザーへの適切なフィードバック
+   - リトライ戦略
+
+4. **パフォーマンス最適化**：
+   - セレクターによる再描画制御
+   - メモ化の適切な使用
+   - バッチ更新の活用
+
+---
 
 ## Auth機能の状態管理詳細
 
@@ -500,32 +692,6 @@ class LocationStateManager {
    - `useLocation`: 既存コードとの互換性を保つラッパーフック
    - `useLocationContext`: 新規実装で推奨される統合フック
 
-## 一元管理の判断基準
-
-### 一元管理が適している機能
-
-1. **グローバルな状態を持つ**
-   - アプリ全体で共有される情報
-   - 例：認証状態、選択レイヤー、現在位置
-
-2. **複数画面で参照される**
-   - 2つ以上の画面で同じ状態を使用
-   - 例：ユーザー情報、レイヤーリスト
-
-3. **永続化が必要**
-   - アプリ再起動後も保持すべき設定
-   - 例：ユーザー設定、お気に入り
-
-### 一元管理が不適切な機能
-
-1. **画面固有の状態**
-   - 特定の画面でのみ使用される一時的な状態
-   - 例：フォーム入力値、モーダル表示状態
-
-2. **UIのローカル状態**
-   - アニメーション状態、タブ選択状態
-   - 例：ドロワー開閉、ローディング表示
-
 ## 各機能の詳細分析
 
 ### 実装済み（一元管理）
@@ -544,111 +710,6 @@ class LocationStateManager {
 - **理由**: 地図、AudioPin作成で位置情報を共有
 - **実装**: LocationProvider + location-store + locationStateManager
 - **永続化**: 設定のみ（位置情報は永続化しない）
-
-### 未実装（部分管理）
-
-#### AudioPin機能
-- **現状**: 画面ごとに個別管理
-- **課題**: 音声再生状態の不整合
-- **推奨**: 音声再生部分のみ一元管理
-
-#### Map機能
-- **現状**: 画面固有の状態管理
-- **理由**: 地図の表示状態は画面固有
-- **推奨**: 現状維持
-
-## メリット・デメリット
-
-### メリット
-
-1. **状態の一貫性**
-   - Single Source of Truth
-   - 状態の不整合を防止
-
-2. **コードの再利用性**
-   - 共通ロジックの集約
-   - メンテナンス性向上
-
-3. **パフォーマンス最適化**
-   - 適切なメモ化
-   - 不要な再レンダリング防止
-
-### デメリット
-
-1. **複雑性の増加**
-   - 初期実装コスト
-   - 学習曲線
-
-2. **過度な抽象化のリスク**
-   - 不必要な一元化
-   - パフォーマンスへの影響
-
-## 今後の推奨事項
-
-### 短期的な対応
-
-1. **AudioPin機能の部分的一元管理**
-   - 音声再生状態のみ一元管理
-   - AudioServiceの活用
-
-2. **エラーハンドリングの統一**
-   - 共通エラーハンドラーの実装
-   - ユーザーフレンドリーなメッセージ
-
-### 長期的な方針
-
-1. **段階的な移行**
-   - 必要に応じて一元管理へ移行
-   - 過度な最適化を避ける
-
-2. **パフォーマンスモニタリング**
-   - 状態管理のオーバーヘッド監視
-   - 必要に応じた最適化
-
-## 実装パターン
-
-### 推奨パターン
-
-```typescript
-// 1. Zustandストアの定義
-const useFeatureStore = create<State & Actions>()(
-  devtools(
-    persist(
-      immer(
-        subscribeWithSelector((set) => ({
-          // 状態とアクション
-        }))
-      ),
-      {
-        name: 'feature-storage',
-        storage: mmkvStorage,
-        partialize: (state) => ({ /* 永続化対象 */ })
-      }
-    )
-  )
-);
-
-// 2. Providerの実装
-export const FeatureProvider: React.FC<PropsWithChildren> = ({ children }) => {
-  // 初期化ロジック
-  // クリーンアップ処理
-  
-  return (
-    <FeatureContext.Provider value={contextValue}>
-      {children}
-    </FeatureContext.Provider>
-  );
-};
-
-// 3. 統合フックの提供
-export const useFeatureContext = () => {
-  const context = useContext(FeatureContext);
-  if (!context) {
-    throw new Error('useFeatureContext must be used within FeatureProvider');
-  }
-  return context;
-};
-```
 
 ### アンチパターン
 
