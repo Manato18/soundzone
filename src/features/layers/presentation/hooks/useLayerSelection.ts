@@ -31,10 +31,6 @@ export const useLayerSelection = () => {
     toggleLayerAction(layerId);
   }, [toggleLayerAction]);
   
-  // 選択されているレイヤーIDの配列を取得（メモ化）
-  const getSelectedLayerIds = useCallback((): string[] => {
-    return useLayersStore.getState().selectedLayerIds;
-  }, []);
   
   // すべてのレイヤーを選択/解除（メモ化）
   const toggleAllLayers = useCallback((select: boolean = true) => {
@@ -58,7 +54,6 @@ export const useLayerSelection = () => {
     selectedLayers,
     selectedLayerIds,
     toggleLayer,
-    getSelectedLayerIds,
     setSelectedLayers,
     toggleAllLayers,
   };

@@ -1,6 +1,26 @@
 # SoundZone - 変更履歴
 
 ## 2025-07-26
+
+### Map機能のパフォーマンス改善（Phase 1）
+
+1. **レイヤー選択時のチラつき問題の解決**
+   - `useLayerSelection.ts`から`getSelectedLayerIds`関数を削除
+   - `HomeScreen.tsx`で`selectedLayerIds`を直接使用
+   - `useAudioPins`への不要な配列の再生成を防止
+   - 影響範囲: useLayerSelection.ts, HomeScreen.tsx
+
+2. **不必要な再レンダリングの防止**
+   - `MapContainer.tsx`の`handleRegionChange`関数に`useCallback`を適用
+   - 依存配列に`[stopFollowing, onRegionChange]`を設定
+   - 地図操作時のパフォーマンスを改善
+   - 影響範囲: MapContainer.tsx
+
+#### 技術的詳細
+- Zustandの`useShallow`による最適化を維持
+- React.useCallbackによるメモ化でコンポーネントの再レンダリングを最小化
+- StateManagement.mdのセレクターパターンに準拠した実装
+
 ### 位置情報機能の改善実装
 
 1. **録音画面への位置情報表示機能**

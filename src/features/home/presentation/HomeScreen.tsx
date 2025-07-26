@@ -22,7 +22,7 @@ export default function HomeScreen() {
   const { region, updateRegion } = useMapRegion();
   const { centerOnUserLocation } = useMapWithLocation(mapRef);
   const { isFollowingUser } = useMapFollowing();
-  const { layers, selectedLayerIds, toggleLayer, getSelectedLayerIds } = useLayerSelection();
+  const { layers, selectedLayerIds, toggleLayer } = useLayerSelection();
   
   // オーディオピン機能（選択されたレイヤーでフィルタリング）
   const { 
@@ -34,7 +34,7 @@ export default function HomeScreen() {
     isLoading,
     error
   } = useAudioPins({
-    layerIds: getSelectedLayerIds(),
+    layerIds: selectedLayerIds,
   });
 
   return (

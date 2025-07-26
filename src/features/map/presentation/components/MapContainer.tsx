@@ -1,4 +1,4 @@
-import React, { ReactNode, forwardRef } from 'react';
+import React, { ReactNode, forwardRef, useCallback } from 'react';
 import { StyleSheet, View } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
 import Svg, { Circle, Path } from 'react-native-svg';
@@ -30,7 +30,7 @@ export const MapContainer = forwardRef<MapView, MapContainerProps>(
     const { mapType, showCompass, showScale } = useMapSettings();
     const { stopFollowing } = useMapFollowing();
 
-    const handleRegionChange = (newRegion: MapRegion) => {
+    const handleRegionChange = useCallback((newRegion: MapRegion) => {
       // ユーザーが地図を動かしたら追従を停止
       stopFollowing();
       onRegionChange(newRegion);
@@ -41,7 +41,7 @@ export const MapContainer = forwardRef<MapView, MapContainerProps>(
           lng: newRegion.longitude.toFixed(6),
         });
       }
-    };
+    }, [stopFollowing, onRegionChange]);
 
     return (
       <MapView
