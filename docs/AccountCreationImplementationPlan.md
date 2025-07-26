@@ -1,5 +1,8 @@
 # アカウント新規作成画面実装計画
 
+**最終更新日**: 2025年1月26日
+**ステータス**: ✅ 実装完了
+
 ## 概要
 
 新規ユーザー登録時のメール認証後に、プロフィール情報（表示名・アバター画像・自己紹介）を入力する画面を実装します。StateManagement.mdとCentralizedStateManagement.mdの設計原則に従い、Account機能として一元管理を行います。
@@ -234,54 +237,69 @@ if (isAuthenticated && user?.emailVerified && !hasCompletedProfile) {
      - 成功時の自動画面遷移
      - トーストによるフィードバック
 
-### Phase 5: 遷移フロー実装（詳細計画）
+### Phase 5: 遷移フロー実装 ✅ 完了
 
-#### 1. **App.tsxの修正**
-   - ToastProviderの追加
-   - AccountProviderの追加
-   - Providerの正しい順序設定
+#### 1. **App.tsxの修正** ✅
+   - ToastProviderの追加（最外層）
+   - AccountProviderの追加（AuthProvider内）
+   - Provider階層の実装:
+     ```typescript
+     QueryClientProvider
+       └─ ToastProvider
+          └─ AuthProvider
+             └─ AccountProvider
+                └─ LocationProvider
+                   └─ LayersProvider
+                      └─ RootNavigator
+     ```
 
-#### 2. **RootNavigator.tsxの修正**
-   - 現在の遷移ロジック:
+#### 2. **RootNavigator.tsxの修正** ✅
+   - 実装した遷移ロジック:
+     ```typescript
+     // 1. 未認証 → AuthNavigator
+     if (!isAuthenticated) return <AuthNavigator />
+
+     // 2. 認証済み & メール未確認 → AuthNavigator
+     if (!user?.emailVerified) return <AuthNavigator />
+
+     // 3. 認証済み & メール確認済み & プロフィール未作成 → ProfileCreationNavigator  
+     if (!hasCompletedProfile) return <ProfileCreationNavigator />
+
+     // 4. すべて完了 → AppNavigator
+     return <AppNavigator />
      ```
-     認証済み && メール確認済み → AppNavigator
-     それ以外 → AuthNavigator
-     ```
-   - 新しい遷移ロジック:
-     ```
-     認証済み && メール確認済み && プロフィール作成済み → AppNavigator
-     認証済み && メール確認済み && プロフィール未作成 → ProfileCreationScreen
-     それ以外 → AuthNavigator
-     ```
-   - 必要な実装:
+   - 実装内容:
      - useAccountフックのインポート
-     - hasCompletedProfile状態の取得
-     - isCheckingProfile中のローディング表示
-     - ProfileCreationScreenの条件分岐追加
+     - hasCompletedProfile, isCheckingProfile状態の取得
+     - 複合ローディング表示（認証確認中 || プロフィール確認中）
+     - 4段階の条件分岐によるナビゲーション制御
 
-#### 3. **ProfileCreationNavigator作成**
-   - Stack.Navigatorの作成
+#### 3. **ProfileCreationNavigator作成** ✅
+   - Stack.Navigatorの実装
    - ProfileCreationScreenの登録
-   - ヘッダー非表示設定
+   - ヘッダー非表示設定（screenOptions: { headerShown: false }）
 
-#### 4. **Auth → Account連携の確認**
-   - メール認証完了後の動作フロー:
-     1. EmailVerificationScreen → 認証成功
-     2. AuthStateManager → 認証状態更新
-     3. RootNavigator → 再評価
-     4. AccountProvider → プロフィール存在確認
-     5. プロフィール未作成 → ProfileCreationScreen表示
+#### 4. **Auth → Account連携の動作フロー** ✅
+   1. EmailVerificationScreen → OTP認証成功
+   2. AuthStateManager → user.emailVerified = true
+   3. RootNavigator → 再評価トリガー
+   4. AccountProvider → プロフィール存在確認API呼び出し
+   5. hasCompletedProfile = false → ProfileCreationScreen表示
+   6. プロフィール作成成功 → hasCompletedProfile = true
+   7. RootNavigator → 再評価 → AppNavigator表示
 
-#### 5. **成功後の遷移処理**
-   - ProfileCreationScreen → プロフィール作成成功
-   - accountStateManager → hasCompletedProfile更新
-   - RootNavigator → 自動的にAppNavigatorへ遷移
+#### 5. **成功後の自動遷移処理** ✅
+   - ProfileCreationScreen → createProfileMutation成功
+   - accountStateManager → settings.hasCompletedProfile = true
+   - Zustand persist → MMKVに永続化
+   - RootNavigator → 条件再評価により自動的にAppNavigatorへ遷移
 
-#### 6. **エッジケースの対応**
-   - ネットワークエラー時の処理
-   - プロフィール確認中のローディング表示
-   - タイムアウト処理
-   - リトライ機能
+#### 6. **エッジケース対応** ✅
+   - **ネットワークエラー**: TanStack Queryのretry設定（3回まで自動リトライ）
+   - **プロフィール確認中**: isCheckingProfile中はローディング表示
+   - **タイムアウト処理**: TanStack Queryのデフォルト設定を使用
+   - **権限エラー**: 401/403エラー時はリトライなし
+   - **アプリ再起動時**: MMKVから設定を復元、必要に応じてAPIで再確認
 
 ## バリデーションルール
 
@@ -387,14 +405,18 @@ if (isAuthenticated && user?.emailVerified && !hasCompletedProfile) {
   - [x] ProfileCreationScreen（1画面フォーム）
   - [x] リアルタイムバリデーション
   - [x] アップロード進捗表示
-- [ ] Phase 5: 遷移フロー実装
-- [ ] すべての必須項目が入力できる
-- [ ] バリデーションが正しく動作する
-- [ ] 画像がアップロードできる
-- [ ] プロフィールがDBに保存される
-- [ ] 保存後ホーム画面に遷移する
-- [ ] エラー時の適切なフィードバック
-- [ ] 一元管理による状態同期
+- [x] Phase 5: 遷移フロー実装
+  - [x] App.tsxへのProvider追加（ToastProvider, AccountProvider）
+  - [x] ProfileCreationNavigator作成
+  - [x] RootNavigatorの条件分岐実装
+  - [x] 自動遷移メカニズムの実装
+- [x] すべての必須項目が入力できる
+- [x] バリデーションが正しく動作する
+- [x] 画像がアップロードできる
+- [x] プロフィールがDBに保存される
+- [x] 保存後ホーム画面に遷移する
+- [x] エラー時の適切なフィードバック
+- [x] 一元管理による状態同期
 
 ## 実装上の注意点（無限ループ防止）
 
@@ -418,28 +440,21 @@ if (isAuthenticated && user?.emailVerified && !hasCompletedProfile) {
 - 循環参照を避ける
 - イベントベースの疎結合な設計
 
-## 次のフェーズ（Phase 3）の詳細
+## 実装完了サマリー
 
-### TanStack Query統合の実装方針
+### 全Phase完了状況
+1. **Phase 1**: Account機能の基盤構築 ✅
+2. **Phase 2**: API層実装 ✅
+3. **Phase 3**: TanStack Query統合 ✅
+4. **Phase 4**: UI実装 ✅
+5. **Phase 5**: 遷移フロー実装 ✅
 
-1. **クエリキー設計**
-   - 階層的なキー構造: `['account', 'profile', userId]`
-   - 無効化戦略の明確化
-
-2. **ミューテーション設計**
-   - 楽観的更新による即座のフィードバック
-   - エラー時の自動ロールバック
-   - 成功時のキャッシュ更新
-
-3. **React Nativeとの統合**
-   - AppStateによるバックグラウンド対応
-   - オフライン対応の考慮
-   - リフレッシュ戦略
-
-4. **StateManagement.mdとの整合性**
-   - サーバー状態はTanStack Query
-   - UI状態はZustand
-   - 明確な責務分離の維持
+### 主要な実装成果
+- **完全な一元管理**: Auth → Account連携による状態管理
+- **無限ループ防止**: 適切なuseEffect依存配列とフラグ管理
+- **UX最適化**: 自動遷移、リアルタイムバリデーション、トースト通知
+- **エラーハンドリング**: ネットワークエラー、権限エラー、バリデーションエラー対応
+- **永続化戦略**: MMKVによる設定の永続化、セキュリティを考慮した実装
 
 ## 実装済みコンポーネントの相関図
 
@@ -514,23 +529,27 @@ if (isAuthenticated && user?.emailVerified && !hasCompletedProfile) {
 - **情報**: 青色、インフォアイコン
 - 表示位置: 画面上部（iOS: top:50, Android: top:30）
 
-## Phase 5の実装順序
+## Phase 5で実装した内容
 
-### Step 1: Provider設定
-1. App.tsxにToastProvider追加
-2. App.tsxにAccountProvider追加
-3. Provider階層の確認
+### 実装ファイル一覧
+1. **App.tsx**
+   - ToastProviderとAccountProviderを追加
+   - 適切なProvider階層を構築
 
-### Step 2: Navigator実装
-1. ProfileCreationNavigator作成
-2. RootNavigatorの条件分岐追加
-3. ローディング処理の実装
+2. **ProfileCreationNavigator.tsx** (新規作成)
+   - Stack.Navigatorでプロフィール作成画面を管理
+   - ヘッダー非表示設定
 
-### Step 3: 動作確認項目
-- [ ] 新規登録 → メール認証 → プロフィール作成画面
-- [ ] プロフィール作成 → ホーム画面遷移
-- [ ] アプリ再起動時の画面振り分け
-- [ ] エラー時のリトライ機能
+3. **RootNavigator.tsx**
+   - useAccountフックのインポート追加
+   - 4段階の条件分岐ロジック実装
+   - プロフィール確認中のローディング対応
+
+### 動作確認項目
+- [x] 新規登録 → メール認証 → プロフィール作成画面
+- [x] プロフィール作成 → ホーム画面遷移
+- [x] アプリ再起動時の画面振り分け（MMKVによる永続化）
+- [x] エラー時のリトライ機能（TanStack Query）
 
 ## 技術的な注意点
 
