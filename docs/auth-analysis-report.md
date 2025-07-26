@@ -39,7 +39,7 @@ src/features/auth/
 
 ## 発見された問題点と解決策
 
-### 1. 競合状態（Race Condition）の問題
+### 1. 競合状態（Race Condition）の問題 (解決)
 
 #### 問題詳細
 - **セッション復元とauthStateManager初期化の競合**
@@ -50,43 +50,6 @@ src/features/auth/
   - authProcessStateの管理はあるが、完全ではない
   - 例：ログイン処理中に再度ログインボタンを押せてしまう
 
-#### 解決策
-```typescript
-// 1. AuthProviderでの初期化順序の明確化
-const initializeAuth = async () => {
-  try {
-    // セッション復元を最初に実行
-    const restored = await sessionRestoration.restoreSession();
-    
-    // その後にauthStateManagerを初期化
-    await authStateManager.initialize(queryClient);
-    
-    // 復元されたセッションがある場合は手動で同期
-    if (restored) {
-      await authStateManager.refreshUserData();
-    }
-  } catch (error) {
-    // エラーハンドリング
-  }
-};
-
-// 2. 認証プロセスのロック機構強化
-const useAuthProcessLock = () => {
-  const [isLocked, setIsLocked] = useState(false);
-  
-  const withLock = useCallback(async (fn: () => Promise<any>) => {
-    if (isLocked) return;
-    setIsLocked(true);
-    try {
-      return await fn();
-    } finally {
-      setIsLocked(false);
-    }
-  }, [isLocked]);
-  
-  return { withLock, isLocked };
-};
-```
 
 ### 2. エラーハンドリングの不一致
 

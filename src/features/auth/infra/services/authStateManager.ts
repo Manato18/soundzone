@@ -28,8 +28,10 @@ export class AuthStateManager {
 
   /**
    * 初期化（アプリ起動時に一度だけ呼び出す）
+   * @param queryClient - QueryClientインスタンス
+   * @param restoredSession - 復元されたセッション（オプション）
    */
-  async initialize(queryClient: QueryClient): Promise<void> {
+  async initialize(queryClient: QueryClient, restoredSession?: Session | null): Promise<void> {
     if (this.isInitialized) {
       console.warn('[AuthStateManager] Already initialized');
       return;
@@ -37,8 +39,14 @@ export class AuthStateManager {
 
     this.queryClient = queryClient;
     
-    // 現在のセッションを取得して初期状態を設定
-    const { data: { session } } = await supabase.auth.getSession();
+    // セッションが渡された場合はそれを使用、なければ現在のセッションを取得
+    let session = restoredSession;
+    if (session === undefined) {
+      const { data } = await supabase.auth.getSession();
+      session = data.session;
+    }
+    
+    // 初期状態を設定
     await this.syncAuthState(session);
 
     // 認証状態変更の監視を開始
@@ -50,7 +58,7 @@ export class AuthStateManager {
     await authTokenManager.initialize();
 
     this.isInitialized = true;
-    console.log('[AuthStateManager] Initialized');
+    console.log('[AuthStateManager] Initialized with session:', !!session);
   }
 
   /**

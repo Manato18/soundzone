@@ -34,12 +34,13 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
       try {
         console.log('[AuthProvider] Initializing auth...');
         
-        // 1. まずセッション復元を試みる（authStateManager初期化前に実行）
+        // 1. セッション復元を試みる
+        let restoredSession = null;
         if (!isRestoringRef.current && isMounted) {
           isRestoringRef.current = true;
-          const restored = await sessionRestoration.restoreSession();
+          restoredSession = await sessionRestoration.restoreSession();
           
-          if (restored && isMounted) {
+          if (restoredSession && isMounted) {
             console.log('[AuthProvider] Session restored successfully');
           } else if (isMounted) {
             console.log('[AuthProvider] No session to restore');
@@ -47,9 +48,11 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
           isRestoringRef.current = false;
         }
         
-        // 2. セッション復元後にauthStateManagerを初期化
-        // これにより、復元されたセッションがある場合は正しく認識される
-        await authStateManager.initialize(queryClient);
+        // 2. 復元されたセッション（またはnull）を使用してauthStateManagerを初期化
+        // これにより、セッション復元の結果が確実に反映される
+        if (isMounted) {
+          await authStateManager.initialize(queryClient, restoredSession);
+        }
         
         if (isMounted) {
           isInitializedRef.current = true;

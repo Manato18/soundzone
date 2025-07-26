@@ -384,7 +384,7 @@ export const useLoginFormHook = () => {
     updatePassword: (password: string) => updateLoginForm({ password }),
     handleSubmit,
     clearForm: clearLoginForm,
-    isSubmitting: form.isSubmitting || signInMutation.isPending,
+    isSubmitting: form.isSubmitting || signInMutation.isPending || authProcessState !== 'IDLE',
     remainingAttempts,
     isLocked: !!lockoutTime,
     lockoutTimeRemaining: waitTime,
@@ -493,7 +493,7 @@ export const useSignUpFormHook = () => {
     updateConfirmPassword: (confirmPassword: string) => updateSignUpForm({ confirmPassword }),
     handleSubmit,
     clearForm: clearSignUpForm,
-    isSubmitting: form.isSubmitting || signUpMutation.isPending,
+    isSubmitting: form.isSubmitting || signUpMutation.isPending || authProcessState !== 'IDLE',
   };
 };
 
