@@ -28,7 +28,7 @@ Layer, Auth, Location は一元管理が良さそう
 | 機能 | Provider実装 | 状態管理 | 永続化 | 備考 |
 |-----|------------|---------|--------|------|
 | Layers | ✅ LayersProvider | layers-store.ts | ✅ settings, selectedLayerIds | 完全な一元管理実装 |
-| Auth | ❌ なし | auth-store.ts | ✅ user, session | ストアレベルで一元管理 |
+| Auth | ✅ AuthProvider | auth-store.ts + authStateManager | ✅ settings only | 完全な一元管理実装済み |
 | Location | ❌ なし | location-store.ts | ✅ settings | ストアレベルで管理 |
 | AudioPin | ❌ なし | audioPin-store.ts | ✅ settings | 部分的な管理のみ |
 | Map | ❌ なし | map-store.ts | ✅ settings | 画面固有の状態管理 |
@@ -91,32 +91,40 @@ Layer, Auth, Location は一元管理が良さそう
 
 ### 2. Auth（認証）機能
 
-#### 現在の実装
+#### 現在の実装（✅ 実装済み）
 ```typescript
-// auth-store.tsで管理
+// AuthProvider + authStateManager + auth-store.tsで完全な一元管理
 interface AuthState {
   user: QueryUser | null;
   isAuthenticated: boolean;
   authProcessState: 'IDLE' | 'SIGNING_IN' | 'SIGNING_UP' | 'SIGNING_OUT';
   ui: { loginForm, signUpForm, emailVerification };
+  settings: { // 永続化される設定
+    biometricEnabled: boolean;
+    autoLoginEnabled: boolean;
+    isFirstLaunch: boolean;
+    lastLoginEmail?: string;
+  };
 }
 ```
 
-#### なぜ一元管理が必要か
-- **全画面**: 認証状態のチェック
-- **API呼び出し**: トークンの付与
-- **ナビゲーション**: ログイン状態による制御
-- **プッシュ通知**: ユーザーIDの参照
+#### 実装された機能
+- **AuthProvider**: アプリ起動時のセッション復元
+- **authStateManager**: Supabase認証状態の監視と同期
+- **authTokenManager**: トークンの自動更新
+- **sessionPersistence**: セッションの暗号化保存
 
-#### 推奨実装
-```typescript
-// AuthProviderの実装を推奨
-export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // トークンの自動更新
-  // セッションの復元
-  // ログアウト時の全データクリア
-};
-```
+#### 主な特徴
+- **競合状態の防止**: authProcessStateで認証処理の状態を管理
+- **自動クリーンアップ**: ログアウト時に以下をクリア
+  - Zustandストア（設定以外）
+  - TanStack Queryキャッシュ
+  - Supabaseセッション
+  - 永続化されたセッション
+- **設定の保持**: ユーザビリティのため以下は保持
+  - lastLoginEmail（次回ログイン時の利便性）
+  - biometricEnabled（生体認証設定）
+  - autoLoginEnabled（自動ログイン設定）
 
 ### 3. Location（位置情報）機能
 
@@ -231,14 +239,15 @@ interface MapState {
 
 ## 今後の推奨事項
 
-### 優先度1: AuthProvider実装
+### ✅ 実装済み: AuthProvider
 ```typescript
-// 実装理由
-- トークンの自動更新機能
-- セッション復元の一元化
-- ログアウト時の全データクリア
+// 実装完了した機能
+- トークンの自動更新機能（authTokenManager）
+- セッション復元の一元化（AuthProvider + sessionRestoration）
+- ログアウト時の全データクリア（authStateManager）
+- 競合状態の防止（authProcessState）
 
-// 実装内容
+// 現在の構成
 <QueryClientProvider>
   <AuthProvider>
     <LayersProvider>
@@ -248,7 +257,7 @@ interface MapState {
 </QueryClientProvider>
 ```
 
-### 優先度2: LocationProvider実装
+### 優先度1: LocationProvider実装
 ```typescript
 // 実装理由
 - 位置情報の重複取得を防止
@@ -261,7 +270,7 @@ interface MapState {
 - 権限管理の統合
 ```
 
-### 優先度3: AudioPinProvider実装
+### 優先度2: AudioPinProvider実装
 ```typescript
 // 実装理由
 - ピンリストのキャッシュ管理
@@ -369,4 +378,11 @@ export const useUpdateFeature = () => {
 
 SoundZoneの状態管理は、機能の特性に応じて適切に選択することが重要です。一元管理は強力なパターンですが、すべてに適用する必要はありません。各機能の使用範囲、依存関係、パフォーマンス要件を考慮し、最適な管理方法を選択してください。
 
-現在のLayersProviderの実装は、この原則に従った良い例であり、今後のAuth、Location、AudioPinへの適用も推奨されます。
+現在のLayersProviderとAuthProviderの実装は、この原則に従った良い例であり、今後のLocation、AudioPinへの適用も推奨されます。
+
+### 実装状況サマリー
+- **✅ Layers**: 完全な一元管理実装済み
+- **✅ Auth**: 完全な一元管理実装済み（authStateManager + AuthProvider）
+- **⏳ Location**: 次の優先実装対象
+- **⏳ AudioPin**: その次の実装対象
+- **❌ Map**: 画面固有のため個別管理を継続
