@@ -10,6 +10,7 @@ import RootNavigator from './src/navigation/RootNavigator';
 import { AppInitializer } from './src/shared/infra/initialization/appInitializer';
 import { AuthProvider } from './src/features/auth/presentation/providers';
 import { LayersProvider } from './src/features/layers/presentation/providers/LayersProvider';
+import { LocationProvider } from './src/features/location/presentation/providers/LocationProvider';
 
 export default function App() {
   const [loaded] = useFonts({
@@ -39,10 +40,12 @@ export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <LayersProvider>
-          <RootNavigator />
-          <StatusBar style="auto" />
-        </LayersProvider>
+        <LocationProvider>
+          <LayersProvider>
+            <RootNavigator />
+            <StatusBar style="auto" />
+          </LayersProvider>
+        </LocationProvider>
       </AuthProvider>
     </QueryClientProvider>
   );

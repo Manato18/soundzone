@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import MapView from 'react-native-maps';
-import { useLocationStore } from '../../../location/application/location-store';
+import { useStableLocation } from '../../../location/application/location-store';
 import { UserLocationData } from '../../../location/domain/entities/Location';
 import { useMapStore } from '../../application/map-store';
 
@@ -14,12 +14,12 @@ export const useMapWithLocation = (mapRef: React.RefObject<MapView | null>) => {
   const isFollowingUser = useMapStore((state) => state.isFollowingUser);
   const setIsFollowingUser = useMapStore((state) => state.setIsFollowingUser);
   
-  const currentLocation = useLocationStore((state) => state.currentLocation);
+  const stableLocation = useStableLocation();
   const previousLocationRef = useRef<UserLocationData | null>(null);
   
   // 位置情報が更新された時の処理
   useEffect(() => {
-    if (!currentLocation || !isFollowingUser || !mapRef.current) {
+    if (!stableLocation || !isFollowingUser || !mapRef.current) {
       return;
     }
     
@@ -27,12 +27,12 @@ export const useMapWithLocation = (mapRef: React.RefObject<MapView | null>) => {
     const prevLocation = previousLocationRef.current;
     if (
       !prevLocation ||
-      prevLocation.coords.latitude !== currentLocation.coords.latitude ||
-      prevLocation.coords.longitude !== currentLocation.coords.longitude
+      prevLocation.coords.latitude !== stableLocation.coords.latitude ||
+      prevLocation.coords.longitude !== stableLocation.coords.longitude
     ) {
       const newRegion = {
-        latitude: currentLocation.coords.latitude,
-        longitude: currentLocation.coords.longitude,
+        latitude: stableLocation.coords.latitude,
+        longitude: stableLocation.coords.longitude,
         latitudeDelta: region.latitudeDelta,
         longitudeDelta: region.longitudeDelta,
       };
@@ -48,16 +48,16 @@ export const useMapWithLocation = (mapRef: React.RefObject<MapView | null>) => {
         });
       }
       
-      previousLocationRef.current = currentLocation;
+      previousLocationRef.current = stableLocation;
     }
-  }, [currentLocation, isFollowingUser, region.latitudeDelta, region.longitudeDelta, updateRegion, mapRef]);
+  }, [stableLocation, isFollowingUser, region.latitudeDelta, region.longitudeDelta, updateRegion, mapRef]);
   
   // 現在位置に移動する関数
   const centerOnUserLocation = () => {
-    if (currentLocation && mapRef.current) {
+    if (stableLocation && mapRef.current) {
       const newRegion = {
-        latitude: currentLocation.coords.latitude,
-        longitude: currentLocation.coords.longitude,
+        latitude: stableLocation.coords.latitude,
+        longitude: stableLocation.coords.longitude,
         latitudeDelta: region.latitudeDelta,
         longitudeDelta: region.longitudeDelta,
       };

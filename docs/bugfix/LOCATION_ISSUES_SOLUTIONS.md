@@ -3,63 +3,6 @@
 ## 概要
 このドキュメントは、SoundZoneアプリの位置情報機能（`@src/features/location/`）で発見された問題とその解決策をまとめたものです。
 
-## 1. 状態の不整合問題
-
-### 問題
-- **stableLocationの二重管理**: HomeScreenで独自の`stableLocation`状態を管理し、location storeの状態と二重管理になっている
-- **heading更新の競合**: 位置情報（2秒間隔）とheading（100ms間隔）の更新頻度が異なるため、タイミングによってheadingがnullになる
-
-### 解決策
-
-#### 1.1 Single Source of Truth の確立
-```typescript
-// location-store.ts に安定化ロジックを統合
-interface LocationState {
-  currentLocation: Location | null;
-  stableLocation: Location | null; // 追加
-  // ...
-}
-
-// 安定化ロジックをstoreに移動
-const updateLocation = (location: Location) => {
-  const isValidLocation = location.coords.latitude !== 0 && location.coords.longitude !== 0;
-  if (isValidLocation) {
-    set({ 
-      currentLocation: location,
-      stableLocation: location 
-    });
-  } else {
-    set({ currentLocation: location }); // stableLocationは更新しない
-  }
-};
-```
-
-#### 1.2 Heading更新の統合
-```typescript
-// 位置情報とheadingを統合した更新メカニズム
-interface UnifiedLocationUpdate {
-  position?: Location;
-  heading?: number;
-  timestamp: number;
-}
-
-// 統合された更新関数
-const updateUnifiedLocation = (update: UnifiedLocationUpdate) => {
-  const current = get().currentLocation;
-  const merged = {
-    ...current,
-    ...(update.position || {}),
-    coords: {
-      ...current?.coords,
-      ...update.position?.coords,
-      heading: update.heading ?? current?.coords.heading
-    },
-    timestamp: update.timestamp
-  };
-  set({ currentLocation: merged });
-};
-```
-
 ## 2. パフォーマンス問題
 
 ### 問題
