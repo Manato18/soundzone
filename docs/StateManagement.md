@@ -37,17 +37,24 @@ React／React Native アプリにおいて **UI 状態・サーバー状態・
 ## 4. TanStack Query 規約
 
 1. **queryKey** はシリアライズ可能な配列：`['auth', 'user']`
-2. **staleTime / cacheTime 推奨値（チームガイドライン）**
 
-   | データ種別  | staleTime | cacheTime |
-   | ------ | --------- | --------- |
-   | 認証ユーザー | 5 min     | 15 min    |
-   | 参照マスタ  | Infinity  | 24 h      |
-   | 高頻度更新  | 0         | 5 min     |
-3. **キャッシュ更新**：`onSuccess` で zustand setter を呼び出し単一点同期
+2. **staleTime / gcTime 推奨値（v5 仕様準拠）**
+
+   | データ種別  | staleTime | gcTime |
+   | ------ | --------- | ------ |
+   | 認証ユーザー | 5 min     | 15 min |
+   | 参照マスタ  | Infinity  | 24 h   |
+   | 高頻度更新  | 0         | 5 min  |
+
+3. **キャッシュ更新**：`onSuccess` で zustand setter を呼び出し単一点同期（重複保持は最小限に）
+
 4. **クエリクリア**：ログアウト時は `queryClient.removeQueries({ predicate: q => q.queryKey[0] === 'auth' })`
+
 5. **Suspense/ErrorBoundary**：画面単位で局所的に利用し、グローバルでは使用しない
-6. **OfflineFirst** が必要な場合は `networkMode: 'offlineFirst'` を指定
+
+6. **OfflineFirst** が必要な場合は `networkMode: 'offlineFirst'` を指定。
+
+上記の `cacheTime` → `gcTime` 名称変更は TanStack Query v5 の公式変更です。
 
 ---
 
@@ -62,7 +69,7 @@ React／React Native アプリにおいて **UI 状態・サーバー状態・
   const storage = new MMKV({ encryptionKey: ENV.MMKV_KEY });
   ```
 * 関数・クラスインスタンスは保存不可（JSON シリアライズ可能なプリミティブのみ）
-* **バージョン依存**：v3 以降は TurboModule ベース。React Native 0.75 以上 & 新アーキテクチャが前提。
+* **バージョン依存**：v3 以降は TurboModule ベース。React Native **0.74 以上** & 新アーキテクチャが前提。
 
 ---
 
@@ -106,7 +113,7 @@ use<Feature><Action>Hook.ts
 
 ## 9. 追加ガイドライン
 
-* **Concurrent Rendering**：React Native 0.75 以上 & 新アーキテクチャ有効を前提。アンマウント後の state 更新を回避。
+* **Concurrent Rendering**：React Native 新アーキテクチャ（RN 0.74+）で React 18 の concurrent features を前提にし、アンマウント後の state 更新を回避。
 * **トークンリフレッシュ**：`AppState` 変化時にサイレント更新を実装。
 * **型自動生成**：`supabase gen types typescript` で API 型を同期。
 * **インストルメンテーション**：zustand middleware で Sentry Breadcrumb を記録。
