@@ -168,7 +168,6 @@ function ProfileCreationScreen() {
     form.displayName.trim().length > 0 && 
     !form.errors.displayName &&
     !form.errors.bio &&
-    avatarDisplayUrl &&
     !form.isSubmitting &&
     !isCreating &&
     !isUploading;

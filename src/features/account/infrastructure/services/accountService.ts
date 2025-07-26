@@ -21,7 +21,7 @@ export class AccountService {
     email: string;
     emailVerified: boolean;
     displayName: string;
-    avatarUrl: string;
+    avatarUrl?: string;
     bio: string;
   }): Promise<QueryProfile> {
     try {
@@ -32,7 +32,7 @@ export class AccountService {
           email: params.email,
           email_verified: params.emailVerified,
           display_name: params.displayName,
-          avatar_url: params.avatarUrl,
+          avatar_url: params.avatarUrl || null,
           bio: params.bio,
         })
         .select()

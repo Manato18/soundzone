@@ -82,13 +82,10 @@ export const useProfileCreationForm = () => {
   }, [setFormError]);
   
   const validateAvatar = useCallback((): boolean => {
-    if (!form.avatarUri && !uploadState.uploadedUrl) {
-      setFormError('avatar', 'プロフィール画像を選択してください');
-      return false;
-    }
+    // 画像は任意項目なので常にtrueを返す
     setFormError('avatar', undefined);
     return true;
-  }, [form.avatarUri, uploadState.uploadedUrl, setFormError]);
+  }, [setFormError]);
   
   // 画像選択（Blobは別管理）
   const selectImage = useCallback((uri: string, blob: Blob) => {
@@ -115,9 +112,8 @@ export const useProfileCreationForm = () => {
     // バリデーション
     const isDisplayNameValid = validateDisplayName(form.displayName);
     const isBioValid = validateBio(form.bio);
-    const isAvatarValid = validateAvatar();
     
-    if (!isDisplayNameValid || !isBioValid || !isAvatarValid) {
+    if (!isDisplayNameValid || !isBioValid) {
       return { success: false, error: 'バリデーションエラー' };
     }
     
@@ -125,9 +121,9 @@ export const useProfileCreationForm = () => {
       updateForm({ isSubmitting: true });
       setFormError('general', undefined);
       
-      let avatarUrl = uploadState.uploadedUrl;
+      let avatarUrl = uploadState.uploadedUrl || '';
       
-      // 画像がまだアップロードされていない場合
+      // 画像がまだアップロードされていない場合（画像が選択されている場合のみ）
       if (!avatarUrl && imageDataRef.current) {
         const uploadResult = await uploadAvatarMutation.mutateAsync({
           userId: user.id,
@@ -136,11 +132,7 @@ export const useProfileCreationForm = () => {
         avatarUrl = uploadResult;
       }
       
-      if (!avatarUrl) {
-        throw new Error('アバター画像のアップロードに失敗しました');
-      }
-      
-      // プロフィール作成
+      // プロフィール作成（画像URLは空文字でも可）
       await createProfileMutation.mutateAsync({
         userId: user.id,
         email: user.email,
@@ -169,7 +161,6 @@ export const useProfileCreationForm = () => {
     setFormError,
     validateDisplayName,
     validateBio,
-    validateAvatar,
     createProfileMutation,
     uploadAvatarMutation,
   ]);
