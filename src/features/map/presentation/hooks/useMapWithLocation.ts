@@ -38,7 +38,7 @@ export const useMapWithLocation = (mapRef: React.RefObject<MapView | null>) => {
       };
       
       // アニメーション付きで地図を移動
-      mapRef.current.animateToRegion(newRegion, 1000);
+      mapRef.current.animateToRegion(newRegion, 500); // 0.5秒アニメーション（バランス重視）
       updateRegion(newRegion);
       
       if (__DEV__) {
@@ -62,7 +62,7 @@ export const useMapWithLocation = (mapRef: React.RefObject<MapView | null>) => {
         longitudeDelta: region.longitudeDelta,
       };
       
-      mapRef.current.animateToRegion(newRegion, 1000);
+      mapRef.current.animateToRegion(newRegion, 500); // 0.5秒アニメーション（バランス重視）
       updateRegion(newRegion);
       setIsFollowingUser(true);
       
