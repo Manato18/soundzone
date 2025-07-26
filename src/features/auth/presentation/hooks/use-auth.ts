@@ -15,6 +15,7 @@ import {
   useLoginForm,
   useReset,
   useSetAuthProcessState,
+  useSetEmailVerificationEmail,
   useSetLastLoginEmail,
   useSetLoginError,
   useSetLoginSubmitting,
@@ -508,6 +509,7 @@ export const useEmailVerificationHook = () => {
   const setResending = useSetResending();
   const startResendCooldown = useStartResendCooldown();
   const setVerificationCode = useSetVerificationCode();
+  const setEmailVerificationEmail = useSetEmailVerificationEmail();
   const verifyOTPMutation = useVerifyOTPMutation();
   const resendEmailMutation = useResendVerificationEmailMutation();
 
@@ -588,6 +590,12 @@ export const useEmailVerificationHook = () => {
     }
   }, [verification.email, verification.resendCooldown, resendEmailMutation, setResending, startResendCooldown, setVerificationError]);
 
+  // メールアドレス設定とクールダウン開始
+  const setEmailAndStartCooldown = useCallback((email: string) => {
+    setEmailVerificationEmail(email);
+    startResendCooldown();
+  }, [setEmailVerificationEmail, startResendCooldown]);
+
   return {
     verification,
     verifyOTP,
@@ -599,5 +607,6 @@ export const useEmailVerificationHook = () => {
     },
     isVerifying: verification.isVerifying || verifyOTPMutation.isPending,
     isResending: verification.isResending || resendEmailMutation.isPending,
+    setEmailAndStartCooldown,
   };
 };

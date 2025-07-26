@@ -65,12 +65,33 @@ export class AuthStateManager {
    * クリーンアップ（アプリ終了時に呼び出す）
    */
   cleanup(): void {
+    console.log('[AuthStateManager] Starting cleanup...', {
+      isInitialized: this.isInitialized,
+      hasSubscription: !!this.authSubscription,
+    });
+
+    // 認証状態変更リスナーのクリーンアップ
     if (this.authSubscription) {
-      this.authSubscription.data.subscription.unsubscribe();
+      try {
+        this.authSubscription.data.subscription.unsubscribe();
+        console.log('[AuthStateManager] Auth subscription unsubscribed');
+      } catch (error) {
+        console.error('[AuthStateManager] Error unsubscribing auth subscription:', error);
+      }
       this.authSubscription = null;
     }
-    authTokenManager.cleanup();
+
+    // トークンマネージャーのクリーンアップ
+    try {
+      authTokenManager.cleanup();
+    } catch (error) {
+      console.error('[AuthStateManager] Error cleaning up authTokenManager:', error);
+    }
+
+    // 内部状態のリセット
+    this.queryClient = null;
     this.isInitialized = false;
+    
     console.log('[AuthStateManager] Cleaned up');
   }
 

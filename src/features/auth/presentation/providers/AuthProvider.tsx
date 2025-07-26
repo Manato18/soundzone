@@ -21,6 +21,7 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
   const queryClient = useQueryClient();
   const isInitializedRef = useRef(false);
   const isRestoringRef = useRef(false);
+  const initializationStateRef = useRef<'idle' | 'initializing' | 'initialized'>('idle');
 
   // 初回マウント時の初期化処理
   useEffect(() => {
@@ -32,6 +33,8 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
 
     const initializeAuth = async () => {
       try {
+        // 初期化開始を記録
+        initializationStateRef.current = 'initializing';
         console.log('[AuthProvider] Initializing auth...');
         
         // 1. セッション復元を試みる
@@ -40,9 +43,14 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
           isRestoringRef.current = true;
           restoredSession = await sessionRestoration.restoreSession();
           
-          if (restoredSession && isMounted) {
+          if (!isMounted) {
+            console.log('[AuthProvider] Component unmounted during session restoration');
+            return;
+          }
+          
+          if (restoredSession) {
             console.log('[AuthProvider] Session restored successfully');
-          } else if (isMounted) {
+          } else {
             console.log('[AuthProvider] No session to restore');
           }
           isRestoringRef.current = false;
@@ -52,15 +60,23 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
         // これにより、セッション復元の結果が確実に反映される
         if (isMounted) {
           await authStateManager.initialize(queryClient, restoredSession);
+          
+          if (!isMounted) {
+            console.log('[AuthProvider] Component unmounted during authStateManager initialization');
+            // 初期化が完了していない場合はクリーンアップを呼ばない
+            return;
+          }
         }
         
         if (isMounted) {
           isInitializedRef.current = true;
+          initializationStateRef.current = 'initialized';
           console.log('[AuthProvider] Auth initialization completed');
         }
       } catch (error) {
         if (isMounted) {
           console.error('[AuthProvider] Failed to initialize auth:', error);
+          initializationStateRef.current = 'idle'; // エラー時は初期状態に戻す
           
           // 初期化エラーをユーザーに通知（開発環境のみ）
           if (process.env.NODE_ENV === 'development') {
@@ -78,9 +94,19 @@ export const AuthProvider: React.FC<PropsWithChildren> = ({ children }) => {
     // クリーンアップ処理
     return () => {
       isMounted = false;
-      console.log('[AuthProvider] Cleaning up...');
-      authStateManager.cleanup();
+      console.log('[AuthProvider] Cleaning up...', {
+        initializationState: initializationStateRef.current,
+      });
+      
+      // 初期化が完了している場合のみクリーンアップを実行
+      if (initializationStateRef.current === 'initialized') {
+        authStateManager.cleanup();
+      } else if (initializationStateRef.current === 'initializing') {
+        console.warn('[AuthProvider] Cleanup called during initialization - skipping authStateManager cleanup');
+      }
+      
       isInitializedRef.current = false;
+      initializationStateRef.current = 'idle';
     };
   }, [queryClient]);
 
