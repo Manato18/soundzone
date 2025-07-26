@@ -104,7 +104,7 @@ export const useMapStore = create<MapState>()(
         storage: mmkvStorage,
         partialize: (state) => ({
           settings: state.settings,
-        }) as MapState,
+        }),
       }
     ),
     {

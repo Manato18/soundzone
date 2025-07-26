@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useCallback, useMemo } from 'react';
 import MapView from 'react-native-maps';
 import { useStableLocation } from '../../../location/application/location-store';
 import { UserLocationData } from '../../../location/domain/entities/Location';
@@ -16,10 +16,35 @@ export const useMapWithLocation = (mapRef: React.RefObject<MapView | null>) => {
   
   const stableLocation = useStableLocation();
   const previousLocationRef = useRef<UserLocationData | null>(null);
+  const regionRef = useRef(region);
+  regionRef.current = region;
+  
+  // 地図更新関数をメモ化
+  const updateMapRegion = useCallback((location: UserLocationData) => {
+    if (!mapRef.current) return;
+    
+    const newRegion = {
+      latitude: location.coords.latitude,
+      longitude: location.coords.longitude,
+      latitudeDelta: regionRef.current.latitudeDelta,
+      longitudeDelta: regionRef.current.longitudeDelta,
+    };
+    
+    // アニメーション付きで地図を移動
+    mapRef.current.animateToRegion(newRegion, 500); // 0.5秒アニメーション（バランス重視）
+    updateRegion(newRegion);
+    
+    if (__DEV__) {
+      console.log(`[MapWithLocation] 地図更新:`, {
+        lat: newRegion.latitude.toFixed(6),
+        lng: newRegion.longitude.toFixed(6),
+      });
+    }
+  }, [updateRegion]);
   
   // 位置情報が更新された時の処理
   useEffect(() => {
-    if (!stableLocation || !isFollowingUser || !mapRef.current) {
+    if (!stableLocation || !isFollowingUser) {
       return;
     }
     
@@ -30,50 +55,18 @@ export const useMapWithLocation = (mapRef: React.RefObject<MapView | null>) => {
       prevLocation.coords.latitude !== stableLocation.coords.latitude ||
       prevLocation.coords.longitude !== stableLocation.coords.longitude
     ) {
-      const newRegion = {
-        latitude: stableLocation.coords.latitude,
-        longitude: stableLocation.coords.longitude,
-        latitudeDelta: region.latitudeDelta,
-        longitudeDelta: region.longitudeDelta,
-      };
-      
-      // アニメーション付きで地図を移動
-      mapRef.current.animateToRegion(newRegion, 500); // 0.5秒アニメーション（バランス重視）
-      updateRegion(newRegion);
-      
-      if (__DEV__) {
-        console.log(`[MapWithLocation] 位置更新による地図追従:`, {
-          lat: newRegion.latitude.toFixed(6),
-          lng: newRegion.longitude.toFixed(6),
-        });
-      }
-      
+      updateMapRegion(stableLocation);
       previousLocationRef.current = stableLocation;
     }
-  }, [stableLocation, isFollowingUser, region.latitudeDelta, region.longitudeDelta, updateRegion, mapRef]);
+  }, [stableLocation, isFollowingUser, updateMapRegion]);
   
   // 現在位置に移動する関数
-  const centerOnUserLocation = () => {
-    if (stableLocation && mapRef.current) {
-      const newRegion = {
-        latitude: stableLocation.coords.latitude,
-        longitude: stableLocation.coords.longitude,
-        latitudeDelta: region.latitudeDelta,
-        longitudeDelta: region.longitudeDelta,
-      };
-      
-      mapRef.current.animateToRegion(newRegion, 500); // 0.5秒アニメーション（バランス重視）
-      updateRegion(newRegion);
+  const centerOnUserLocation = useCallback(() => {
+    if (stableLocation) {
+      updateMapRegion(stableLocation);
       setIsFollowingUser(true);
-      
-      if (__DEV__) {
-        console.log(`[MapWithLocation] 現在位置ボタンタップ:`, {
-          lat: newRegion.latitude.toFixed(6),
-          lng: newRegion.longitude.toFixed(6),
-        });
-      }
     }
-  };
+  }, [stableLocation, updateMapRegion, setIsFollowingUser]);
   
   // コンポーネントのアンマウント時にrefをクリア
   useEffect(() => {
@@ -82,8 +75,9 @@ export const useMapWithLocation = (mapRef: React.RefObject<MapView | null>) => {
     };
   }, []);
   
-  return {
+  // 戻り値をメモ化
+  return useMemo(() => ({
     centerOnUserLocation,
     isFollowingUser,
-  };
+  }), [centerOnUserLocation, isFollowingUser]);
 };
